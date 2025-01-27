@@ -1,0 +1,237 @@
+#!/bin/bash
+
+# Strict error handling
+set -euo pipefail
+IFS=$'\n\t'
+
+# Disable command echoing and history
+set +x
+set +o history
+
+# Define accounts array and failed accounts array
+ACCOUNTS=(111111 2222 33333)
+declare -a FAILED_ACCOUNTS=()
+
+# Configuration
+MANAGEMENT_ROLE="arn:aws:iam::623964595746:role/cia_master_management_terraform_role-v2"
+SESSION_NAME="mgmt-session-${BUILD_NUMBER:-$(date +%s)}"
+OUTPUT_DIR="./aws_bucket_analysis_$(date +%Y%m%d)"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+# Function to log messages with timestamp
+log_message() {
+    local level=\$1
+    local message=\$2
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] [$level] $message"
+}
+
+# Function to handle errors
+handle_error() {
+    local exit_code=$?
+    local message=\$1
+    log_message "ERROR" "$message (Exit Code: $exit_code)"
+    return $exit_code
+}
+
+# Function to setup files and directories
+setup_files() {
+    if [ ! -d "$OUTPUT_DIR" ]; then
+        mkdir -p "$OUTPUT_DIR" || handle_error "Failed to create output directory"
+        chmod 750 "$OUTPUT_DIR"
+    fi
+
+    BUCKETS_NO_TAGS=$(mktemp)
+    BUCKETS_WITH_LOGGING=$(mktemp)
+    ALL_BUCKETS_INFO=$(mktemp)
+    ERROR_LOG="${OUTPUT_DIR}/error_${TIMESTAMP}.log"
+    CSV_OUTPUT="${OUTPUT_DIR}/s3_bucket_analysis_${TIMESTAMP}.csv"
+    
+    chmod 600 "$BUCKETS_NO_TAGS" "$BUCKETS_WITH_LOGGING" "$ALL_BUCKETS_INFO"
+    echo "Account,Bucket,Category,LastChecked" > "$CSV_OUTPUT"
+    
+    trap cleanup EXIT INT TERM
+}
+
+# Function to cleanup resources
+cleanup() {
+    log_message "INFO" "Cleaning up resources..."
+    
+    if command -v shred >/dev/null 2>&1; then
+        shred -u "$BUCKETS_NO_TAGS" "$BUCKETS_WITH_LOGGING" "$ALL_BUCKETS_INFO" 2>/dev/null || true
+    else
+        rm -f "$BUCKETS_NO_TAGS" "$BUCKETS_WITH_LOGGING" "$ALL_BUCKETS_INFO"
+    fi
+
+    # Clear credentials
+    unset AWS_SESSION_TOKEN AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+    unset MGMT_SESSION_TOKEN MGMT_ACCESS_KEY_ID MGMT_SECRET_ACCESS_KEY
+}
+
+# Function to assume role with retries
+assume_role() {
+    local role_arn=\$1
+    local session_name=\$2
+    local max_attempts=3
+    local attempt=1
+    
+    while [ $attempt -le $max_attempts ]; do
+        log_message "INFO" "Attempting to assume role: $role_arn (Attempt $attempt)"
+        if creds=$(aws sts assume-role \
+            --role-arn "$role_arn" \
+            --role-session-name "$session_name" \
+            --output json 2>/dev/null); then
+            echo "$creds"
+            return 0
+        fi
+        
+        attempt=$((attempt + 1))
+        [ $attempt -le $max_attempts ] && sleep 5
+    done
+    
+    return 1
+}
+
+# Function to set credentials
+set_credentials() {
+    local creds=\$1
+    export AWS_SESSION_TOKEN=$(echo "$creds" | jq -r .Credentials.SessionToken)
+    export AWS_ACCESS_KEY_ID=$(echo "$creds" | jq -r .Credentials.AccessKeyId)
+    export AWS_SECRET_ACCESS_KEY=$(echo "$creds" | jq -r .Credentials.SecretAccessKey)
+}
+
+# Function to process buckets in an account
+process_account_buckets() {
+    local account=\$1
+    local current_time=$(date +'%Y-%m-%d %H:%M:%S')
+    
+    log_message "INFO" "Analyzing S3 buckets for account: $account"
+    
+    local buckets
+    if ! buckets=$(aws s3api list-buckets --query 'Buckets[*].Name' --output json 2>/dev/null); then
+        log_message "ERROR" "Failed to list buckets in account $account"
+        return 1
+    fi
+
+    echo "$buckets" | jq -r '.[]' | while read -r bucket; do
+        [ -z "$bucket" ] && continue
+        
+        log_message "INFO" "Checking bucket: $bucket"
+        
+        local has_tags=false
+        local has_logging=false
+        
+        # Check for tags first
+        if aws s3api get-bucket-tagging --bucket "$bucket" &>/dev/null; then
+            has_tags=true
+        elif [ $? -eq 254 ]; then
+            # No tags exist (exit code 254)
+            echo "$account:$bucket:$current_time" >> "$BUCKETS_NO_TAGS"
+        else
+            # Other error occurred
+            log_message "ERROR" "Error checking tags for bucket $bucket in account $account"
+        fi
+
+        # Check logging status (for all buckets)
+        if aws s3api get-bucket-logging --bucket "$bucket" 2>/dev/null | grep -q "LoggingEnabled"; then
+            has_logging=true
+            # Only add to logging list if bucket has tags
+            if [ "$has_tags" = "true" ]; then
+                echo "$account:$bucket:$current_time" >> "$BUCKETS_WITH_LOGGING"
+            fi
+        fi
+
+        # Store complete bucket info regardless of status
+        echo "$account:$bucket:$has_tags:$has_logging:$current_time" >> "$ALL_BUCKETS_INFO"
+    done
+}
+
+# Function to generate CSV output
+generate_csv_output() {
+    log_message "INFO" "Generating CSV output..."
+    
+    # Process buckets without tags
+    while IFS=: read -r account bucket timestamp; do
+        echo "$account,$bucket,No Tags,$timestamp" >> "$CSV_OUTPUT"
+    done < "$BUCKETS_NO_TAGS"
+
+    # Process buckets with logging (excluding those without tags)
+    while IFS=: read -r account bucket has_tags has_logging timestamp; do
+        if [ "$has_tags" = "true" ] && [ "$has_logging" = "true" ]; then
+            echo "$account,$bucket,Logging Enabled,$timestamp" >> "$CSV_OUTPUT"
+        fi
+    done < "$ALL_BUCKETS_INFO"
+
+    # Add ALL_BUCKETS_INFO to output directory for reference
+    cp "$ALL_BUCKETS_INFO" "${OUTPUT_DIR}/all_buckets_info_${TIMESTAMP}.txt"
+    chmod 640 "${OUTPUT_DIR}/all_buckets_info_${TIMESTAMP}.txt"
+    chmod 640 "$CSV_OUTPUT"
+    
+    log_message "INFO" "CSV report generated: $CSV_OUTPUT"
+}
+
+# Main execution
+main() {
+    log_message "INFO" "Starting S3 bucket analysis..."
+    setup_files
+    
+    log_message "INFO" "Starting process for accounts: ${ACCOUNTS[*]}"
+    log_message "INFO" "Using management role: $MANAGEMENT_ROLE"
+    
+    # Assume management role
+    log_message "INFO" "Assuming management role..."
+    MGMT_CREDS=$(assume_role "$MANAGEMENT_ROLE" "$SESSION_NAME")
+    if [ $? -ne 0 ]; then
+        handle_error "Failed to assume management role"
+        exit 1
+    fi
+
+    # Store management credentials
+    MGMT_SESSION_TOKEN=$(echo "$MGMT_CREDS" | jq -r .Credentials.SessionToken)
+    MGMT_ACCESS_KEY_ID=$(echo "$MGMT_CREDS" | jq -r .Credentials.AccessKeyId)
+    MGMT_SECRET_ACCESS_KEY=$(echo "$MGMT_CREDS" | jq -r .Credentials.SecretAccessKey)
+
+    # Process each account
+    for account in "${ACCOUNTS[@]}"; do
+        log_message "INFO" "Processing account: $account"
+        
+        # Restore management credentials
+        export AWS_SESSION_TOKEN=$MGMT_SESSION_TOKEN
+        export AWS_ACCESS_KEY_ID=$MGMT_ACCESS_KEY_ID
+        export AWS_SECRET_ACCESS_KEY=$MGMT_SECRET_ACCESS_KEY
+        
+        TARGET_ROLE="arn:aws:iam::${account}:role/xyz"
+        log_message "INFO" "Assuming target role: $TARGET_ROLE"
+        
+        # Assume target role
+        TARGET_CREDS=$(assume_role "$TARGET_ROLE" "$SESSION_NAME")
+        if [ $? -ne 0 ]; then
+            log_message "ERROR" "Failed to assume target role for account $account"
+            FAILED_ACCOUNTS+=("$account")
+            continue
+        fi
+        
+        # Set target credentials
+        set_credentials "$TARGET_CREDS"
+        
+        # Process buckets
+        if ! process_account_buckets "$account"; then
+            FAILED_ACCOUNTS+=("$account")
+            continue
+        fi
+    done
+
+    # Generate final report
+    generate_csv_output
+
+    # Report results
+    if [ ${#FAILED_ACCOUNTS[@]} -eq 0 ]; then
+        log_message "INFO" "All accounts processed successfully"
+    else
+        log_message "WARNING" "Failed accounts:"
+        printf '%s\n' "${FAILED_ACCOUNTS[@]}" | tee -a "$ERROR_LOG"
+        exit 1
+    fi
+}
+
+# Execute main function with error handling
+main 2>> "$ERROR_LOG"
