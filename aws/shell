@@ -7,55 +7,84 @@ set -euo pipefail
 set +x
 set +o history
 
-# Redirect stderr to null and disable trace output
-exec 2>/dev/null
-trap '' DEBUG
-
-# Function to safely handle credentials
-assume_role() {
-    local role_arn=\$1
-    local session_name=\$2
-    
-    # Suppress all output except the actual JSON response
-    local temp_creds
-    temp_creds=$(aws sts assume-role \
-        --role-arn "$role_arn" \
-        --role-session-name "$session_name" \
-        --output json 2>/dev/null)
-    
-    # Silently export credentials
-    export AWS_SESSION_TOKEN=$(echo "$temp_creds" | jq -r .Credentials.SessionToken 2>/dev/null)
-    export AWS_ACCESS_KEY_ID=$(echo "$temp_creds" | jq -r .Credentials.AccessKeyId 2>/dev/null)
-    export AWS_SECRET_ACCESS_KEY=$(echo "$temp_creds" | jq -r .Credentials.SecretAccessKey 2>/dev/null)
-    
-    # Clear temporary variables
-    unset temp_creds
-}
-
-# Define accounts array
+# Define accounts array and failed accounts array
 ACCOUNTS=(111111 2222 33333)
+declare -a FAILED_ACCOUNTS=()
 
 # Management role assumption
-MANAGEMENT_ROLE="arn:aws:iam::6666666:role/cia_master_management_terraform_role-v2"
+MANAGEMENT_ROLE="arn:aws:iam::6666:role/cia_master_management_terraform_role-v2"
+SESSION_NAME="mgmt-session-${BUILD_NUMBER}"
+
 echo "Starting process for accounts: ${ACCOUNTS[*]}"
+echo "Using management role: $MANAGEMENT_ROLE"
+echo "Session name: $SESSION_NAME"
 
-# Assume management role silently
-assume_role "$MANAGEMENT_ROLE" "mgmt-session-${BUILD_NUMBER}"
+# Assume management role once and store credentials
+echo "Assuming management role..."
+MGMT_CREDS=$(aws sts assume-role \
+    --role-arn "$MANAGEMENT_ROLE" \
+    --role-session-name "$SESSION_NAME" \
+    --output json)
 
-# Process each account
+if [ $? -ne 0 ]; then
+    echo "Failed to assume management role"
+    exit 1
+fi
+
+# Store management credentials in variables
+MGMT_SESSION_TOKEN=$(echo "$MGMT_CREDS" | jq -r .Credentials.SessionToken)
+MGMT_ACCESS_KEY_ID=$(echo "$MGMT_CREDS" | jq -r .Credentials.AccessKeyId)
+MGMT_SECRET_ACCESS_KEY=$(echo "$MGMT_CREDS" | jq -r .Credentials.SecretAccessKey)
+
+echo "Successfully assumed management role"
+
+# Process each account using management credentials
 for account in "${ACCOUNTS[@]}"; do
     echo "Processing account: $account"
+    
+    # Restore management credentials before assuming target role
+    export AWS_SESSION_TOKEN=$MGMT_SESSION_TOKEN
+    export AWS_ACCESS_KEY_ID=$MGMT_ACCESS_KEY_ID
+    export AWS_SECRET_ACCESS_KEY=$MGMT_SECRET_ACCESS_KEY
+    
     TARGET_ROLE="arn:aws:iam::${account}:role/xyz"
+    echo "Assuming target role: $TARGET_ROLE"
     
-    # Assume target role silently
-    assume_role "$TARGET_ROLE" "target-session-${BUILD_NUMBER}"
+    # Use management credentials to assume target role
+    if ! TARGET_CREDS=$(aws sts assume-role \
+        --role-arn "$TARGET_ROLE" \
+        --role-session-name "$SESSION_NAME" \
+        --output json 2>/dev/null); then
+        echo "Failed to assume target role for account $account"
+        FAILED_ACCOUNTS+=("$account")
+        continue
+    fi
     
-    # Only show S3 bucket list
-    aws s3 ls
+    # Use target role credentials for S3 listing
+    export AWS_SESSION_TOKEN=$(echo "$TARGET_CREDS" | jq -r .Credentials.SessionToken)
+    export AWS_ACCESS_KEY_ID=$(echo "$TARGET_CREDS" | jq -r .Credentials.AccessKeyId)
+    export AWS_SECRET_ACCESS_KEY=$(echo "$TARGET_CREDS" | jq -r .Credentials.SecretAccessKey)
+    
+    echo "Successfully assumed target role, listing S3 buckets..."
+    # List S3 buckets
+    if ! aws s3 ls 2>/dev/null; then
+        echo "Failed to list S3 buckets for account $account"
+        FAILED_ACCOUNTS+=("$account")
+    fi
     echo "----------------------------------------"
 done
 
-# Clean up environment variables
+# Clean up
 unset AWS_SESSION_TOKEN AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
-unset MANAGEMENT_ROLE TARGET_ROLE
-set -o history
+unset MGMT_SESSION_TOKEN MGMT_ACCESS_KEY_ID MGMT_SECRET_ACCESS_KEY
+unset MGMT_CREDS TARGET_CREDS MANAGEMENT_ROLE TARGET_ROLE SESSION_NAME
+
+# Report results
+echo "Process completed"
+if [ ${#FAILED_ACCOUNTS[@]} -eq 0 ]; then
+    echo "All accounts processed successfully"
+else
+    echo "Failed accounts:"
+    printf '%s\n' "${FAILED_ACCOUNTS[@]}"
+    exit 1
+fi
