@@ -13,7 +13,7 @@ ACCOUNTS=(111111 2222 33333)
 declare -a FAILED_ACCOUNTS=()
 
 # Configuration
-MANAGEMENT_ROLE="arn:aws:iam::623964595746:role/cia_master_management_terraform_role-v2"
+MANAGEMENT_ROLE="arn:aws:iam::6666:role/management_terraform_role-v2"
 SESSION_NAME="mgmt-session-${BUILD_NUMBER:-$(date +%s)}"
 OUTPUT_DIR="./aws_bucket_analysis_$(date +%Y%m%d)"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
