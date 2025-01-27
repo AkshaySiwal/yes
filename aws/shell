@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# Strict error handling
+set -euo pipefail
+
+# Disable command echoing and history
+set +x
+set +o history
+
+# Redirect stderr to null and disable trace output
+exec 2>/dev/null
+trap '' DEBUG
+
+# Function to safely handle credentials
+assume_role() {
+    local role_arn=\$1
+    local session_name=\$2
+    
+    # Suppress all output except the actual JSON response
+    local temp_creds
+    temp_creds=$(aws sts assume-role \
+        --role-arn "$role_arn" \
+        --role-session-name "$session_name" \
+        --output json 2>/dev/null)
+    
+    # Silently export credentials
+    export AWS_SESSION_TOKEN=$(echo "$temp_creds" | jq -r .Credentials.SessionToken 2>/dev/null)
+    export AWS_ACCESS_KEY_ID=$(echo "$temp_creds" | jq -r .Credentials.AccessKeyId 2>/dev/null)
+    export AWS_SECRET_ACCESS_KEY=$(echo "$temp_creds" | jq -r .Credentials.SecretAccessKey 2>/dev/null)
+    
+    # Clear temporary variables
+    unset temp_creds
+}
+
+# Define accounts array
+ACCOUNTS=(111111 2222 33333)
+
+# Management role assumption
+MANAGEMENT_ROLE="arn:aws:iam::6666666:role/cia_master_management_terraform_role-v2"
+echo "Starting process for accounts: ${ACCOUNTS[*]}"
+
+# Assume management role silently
+assume_role "$MANAGEMENT_ROLE" "mgmt-session-${BUILD_NUMBER}"
+
+# Process each account
+for account in "${ACCOUNTS[@]}"; do
+    echo "Processing account: $account"
+    TARGET_ROLE="arn:aws:iam::${account}:role/xyz"
+    
+    # Assume target role silently
+    assume_role "$TARGET_ROLE" "target-session-${BUILD_NUMBER}"
+    
+    # Only show S3 bucket list
+    aws s3 ls
+    echo "----------------------------------------"
+done
+
+# Clean up environment variables
+unset AWS_SESSION_TOKEN AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+unset MANAGEMENT_ROLE TARGET_ROLE
+set -o history
