@@ -1,0 +1,49 @@
+pipeline {
+    agent {
+        docker {
+            alwaysPull true
+            image "python:3.9-slim"
+            label "python-aws"
+            args "--net host"
+        }
+    }
+
+    options {
+        disableConcurrentBuilds()
+        timestamps()
+        ansiColor('xterm')
+    }
+
+    stages {
+        stage('Setup') {
+            steps {
+                script {
+                    sh '''
+                        chmod +x src/aws_runner.sh
+                        chmod +x src/run_aws_operations.py
+                    '''
+                }
+            }
+        }
+
+        stage('Process Accounts') {
+            steps {
+                script {
+                    sh 'python3 src/run_aws_operations.py'
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+        success {
+            echo "Pipeline completed successfully"
+        }
+        failure {
+            echo "Pipeline failed"
+        }
+    }
+}
