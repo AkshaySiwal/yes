@@ -49,7 +49,7 @@ pipeline {
         stage("List S3 Buckets") {
             steps {
                 script {
-                    assume_arn = "arn:aws:iam::623964595746:role/cross-account-role"  // Your cross-account role
+                    assume_arn = "arn:aws:iam::666666666:role/cross-account-role"  // Your cross-account role
                     build.parallelBuild(resourcesToBuild, "list", assume_arn)
                 }
             }
