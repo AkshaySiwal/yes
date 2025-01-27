@@ -171,6 +171,15 @@ generate_csv_output() {
 
 # Main execution
 main() {
+    if [ ! -d "$OUTPUT_DIR" ]; then
+        mkdir -p "$OUTPUT_DIR"
+        chmod 750 "$OUTPUT_DIR"
+    fi
+    
+    ERROR_LOG="${OUTPUT_DIR}/error_${TIMESTAMP}.log"
+    touch "$ERROR_LOG"
+    chmod 640 "$ERROR_LOG"
+    
     log_message "INFO" "Starting S3 bucket analysis..."
     setup_files
     
@@ -223,15 +232,18 @@ main() {
     # Generate final report
     generate_csv_output
 
+
     # Report results
-    if [ ${#FAILED_ACCOUNTS[@]} -eq 0 ]; then
-        log_message "INFO" "All accounts processed successfully"
-    else
-        log_message "WARNING" "Failed accounts:"
-        printf '%s\n' "${FAILED_ACCOUNTS[@]}" | tee -a "$ERROR_LOG"
-        exit 1
-    fi
+if [ ${#FAILED_ACCOUNTS[@]} -eq 0 ]; then
+    log_message "INFO" "All accounts processed successfully"
+    return 0    # Added explicit success return
+else
+    log_message "WARNING" "Failed accounts:"
+    printf '%s\n' "${FAILED_ACCOUNTS[@]}" | tee -a "$ERROR_LOG"
+    return 1    # Changed from exit 1 to return 1
+fi
 }
 
 # Execute main function with error handling
-main 2>> "$ERROR_LOG"
+main
+exit $?
