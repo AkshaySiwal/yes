@@ -1,0 +1,87 @@
+process_account_buckets() {
+    local account=\$1
+    local current_time=$(date +'%Y-%m-%d %H:%M:%S')
+    
+    log_message "INFO" "Analyzing S3 buckets for account: $account"
+    
+    local buckets
+    if ! buckets=$(aws s3api list-buckets --query 'Buckets[*].Name' --output json 2>/dev/null); then
+        log_message "ERROR" "Failed to list buckets in account $account"
+        return 1
+    fi
+
+    # Get all CloudTrail trails first
+    local trails
+    if ! trails=$(aws cloudtrail list-trails --query 'Trails[*].Name' --output json 2>/dev/null); then
+        log_message "ERROR" "Failed to list CloudTrail trails in account $account"
+        return 1
+    fi
+
+    echo "$buckets" | jq -r '.[]' | while read -r bucket; do
+        [ -z "$bucket" ] && continue
+        
+        log_message "INFO" "Checking bucket: $bucket"
+        
+        local has_tags=false
+        local has_object_logging=false
+        
+        # Check for tags first
+        if aws s3api get-bucket-tagging --bucket "$bucket" &>/dev/null; then
+            has_tags=true
+        else
+            echo "$account:$bucket:$current_time" >> "$BUCKETS_NO_TAGS"
+        fi
+
+        # Check for object-level logging in CloudTrail
+        echo "$trails" | jq -r '.[]' | while read -r trail; do
+            [ -z "$trail" ] && continue
+
+            local trail_config
+            trail_config=$(aws cloudtrail get-event-selectors --trail-name "$trail" 2>/dev/null)
+            
+            # Check if all S3 data events are logged
+            if echo "$trail_config" | jq -r '.EventSelectors[].DataResources[] | 
+                select(.Type=="AWS::S3::Object") | 
+                .Values[] | 
+                contains("arn:aws:s3:::*")' | grep -q "true"; then
+                has_object_logging=true
+                break
+            fi
+
+            # Check if specific bucket is logged
+            if echo "$trail_config" | jq -r --arg bucket "$bucket" '.EventSelectors[].DataResources[] | 
+                select(.Type=="AWS::S3::Object") | 
+                .Values[] | 
+                contains($bucket)' | grep -q "true"; then
+                has_object_logging=true
+                break
+            fi
+
+            # Check advanced event selectors
+            local advanced_config
+            advanced_config=$(aws cloudtrail get-advanced-event-selectors --trail-name "$trail" 2>/dev/null)
+            
+            if echo "$advanced_config" | jq -r --arg bucket "$bucket" '
+                .AdvancedEventSelectors[] | 
+                select(
+                    (.FieldSelectors[] | select(.Field=="eventCategory" and .Equals[]=["Data"])) and
+                    (.FieldSelectors[] | select(.Field=="resources.type" and .Equals[]=["AWS::S3::Object"])) and
+                    (.FieldSelectors[] | select(.Field=="resources.ARN" and (
+                        .StartsWith[]=["arn:aws:s3:::*"] or
+                        .StartsWith[]=["arn:aws:s3:::'$bucket'"]
+                    )))
+                )' | grep -q "."; then
+                has_object_logging=true
+                break
+            fi
+        done
+
+        # Only add to logging list if bucket has tags
+        if [ "$has_object_logging" = "true" ] && [ "$has_tags" = "true" ]; then
+            echo "$account:$bucket:$current_time" >> "$BUCKETS_WITH_LOGGING"
+        fi
+
+        # Store complete bucket info regardless of status
+        echo "$account:$bucket:$has_tags:$has_object_logging:$current_time" >> "$ALL_BUCKETS_INFO"
+    done
+}
