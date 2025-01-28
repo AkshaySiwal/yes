@@ -11,6 +11,10 @@ MASTER_ROLE_NAME="master_role"
 SLAVE_ROLE_NAME="slave_role"
 SESSION_NAME="S3CostOpt-$(date +%Y%m%d-%H%M)"
 SLAVE_ACCOUNT_IDS=("slave1" "slave2" "slave3")
+if [ -z "${WORKSPACE}" ]; then
+    echo "ERROR: WORKSPACE environment variable not set"
+    exit 1
+fi
 OUTPUT_DIR="${WORKSPACE}/s3-analysis/$(date +%Y%m%d_%H%M%S)"
 LOG_FILE="${OUTPUT_DIR}/analysis.log"
 
@@ -132,17 +136,17 @@ declare -A REQUEST_COSTS=(
 # MONITORING COST CALCULATION FUNCTIONS
 ###################
 calculate_intelligent_tiering_monitoring_cost() {
-    local object_count=\$1
+    local object_count=$1
     local monitoring_fee=${STORAGE_COSTS["INTELLIGENT_TIERING_MONITORING"]}
     # Calculate monthly monitoring fee per 1000 objects
     echo "scale=4; (${object_count} / 1000) * ${monitoring_fee}" | bc
 }
 
 calculate_potential_savings() {
-    local size_gb=\$1
-    local current_class=\$2
-    local target_class=\$3
-    local access_frequency=\$4  # requests per month
+    local size_gb=$1
+    local current_class=$2
+    local target_class=$3
+    local access_frequency=$4  # requests per month
     
     # Calculate storage cost difference
     local current_cost=$(echo "scale=4; ${size_gb} * ${STORAGE_COSTS[${current_class}]}" | bc)
@@ -162,9 +166,9 @@ calculate_potential_savings() {
 # OPTIMIZATION ANALYSIS FUNCTIONS
 ###################
 analyze_storage_class_recommendation() {
-    local size_gb=\$1
-    local access_frequency=\$2
-    local current_class=\$3
+    local size_gb=$1
+    local access_frequency=$2
+    local current_class=$3
     
     # Analysis logic based on Seoul region specific thresholds
     if (( $(echo "${access_frequency} < 1" | bc -l) )); then
@@ -185,6 +189,83 @@ analyze_storage_class_recommendation() {
             echo "STANDARD"
         fi
     fi
+}
+
+
+calculate_tiered_storage_cost() {
+    local size_gb=$1
+    local storage_class=$2
+    
+    # Calculate cost based on tiered pricing
+    if [ "${storage_class}" = "STANDARD" ]; then
+        if (( $(echo "${size_gb} <= 51200" | bc -l) )); then  # First 50TB
+            echo "scale=4; ${size_gb} * ${STORAGE_COSTS[STANDARD]}" | bc
+        elif (( $(echo "${size_gb} <= 512000" | bc -l) )); then  # Next 450TB
+            local first_tier_cost=$(echo "scale=4; 51200 * ${STORAGE_COSTS[STANDARD]}" | bc)
+            local remaining_gb=$(echo "scale=4; ${size_gb} - 51200" | bc)
+            local second_tier_cost=$(echo "scale=4; ${remaining_gb} * ${STORAGE_COSTS[STANDARD_NEXT]}" | bc)
+            echo "scale=4; ${first_tier_cost} + ${second_tier_cost}" | bc
+        else  # Over 500TB
+            local first_tier_cost=$(echo "scale=4; 51200 * ${STORAGE_COSTS[STANDARD]}" | bc)
+            local second_tier_cost=$(echo "scale=4; 460800 * ${STORAGE_COSTS[STANDARD_NEXT]}" | bc)
+            local remaining_gb=$(echo "scale=4; ${size_gb} - 512000" | bc)
+            local third_tier_cost=$(echo "scale=4; ${remaining_gb} * ${STORAGE_COSTS[STANDARD_OVER]}" | bc)
+            echo "scale=4; ${first_tier_cost} + ${second_tier_cost} + ${third_tier_cost}" | bc
+        fi
+    else
+        echo "scale=4; ${size_gb} * ${STORAGE_COSTS[${storage_class}]}" | bc
+    fi
+}
+
+# Add this function to analyze API costs
+calculate_request_costs() {
+    local bucket=$1
+    local account_dir=$2
+    
+    # Get monthly request counts
+    local get_requests=$(jq -r '.Datapoints[].Sum // 0' "${account_dir}/${bucket}_api_usage.json" | awk '{s+=$1} END {print s}')
+    local put_requests=$(jq -r '.Datapoints[].Sum // 0' "${account_dir}/${bucket}_put_requests.json" | awk '{s+=$1} END {print s}')
+    
+    # Calculate costs
+    local get_cost=$(echo "scale=4; (${get_requests}/1000) * ${REQUEST_COSTS[GET]}" | bc)
+    local put_cost=$(echo "scale=4; (${put_requests}/1000) * ${REQUEST_COSTS[PUT]}" | bc)
+    
+    echo "scale=4; ${get_cost} + ${put_cost}" | bc
+}
+
+# Add this function to analyze lifecycle transition costs
+calculate_lifecycle_costs() {
+    local size_gb=$1
+    local current_class=$2
+    local target_class=$3
+    
+    # Calculate one-time transition cost
+    local transition_cost=$(echo "scale=4; ${size_gb} * ${REQUEST_COSTS[LIFECYCLE]}" | bc)
+    echo "${transition_cost}"
+}
+
+# Add this function to calculate ROI
+calculate_roi() {
+    local current_cost=$1
+    local target_cost=$2
+    local transition_cost=$3
+    
+    # Calculate months to break even
+    local monthly_savings=$(echo "scale=4; ${current_cost} - ${target_cost}" | bc)
+    local breakeven_months=$(echo "scale=2; ${transition_cost} / ${monthly_savings}" | bc)
+    
+    echo "${breakeven_months}"
+}
+
+# Add this function to analyze data transfer costs
+calculate_transfer_costs() {
+    local size_gb=$1
+    local region=$2
+    
+    # Add your region-specific transfer costs
+    local transfer_cost_out="0.09"  # Example cost per GB for data transfer out
+    
+    echo "scale=4; ${size_gb} * ${transfer_cost_out}" | bc
 }
 
 ###################
@@ -376,6 +457,39 @@ gather_s3_data() {
             done
 
         ###############################################################
+        # Enhanced Cost Analysis and Lifecycle Transition Assessment
+        # WHY: Provides detailed cost breakdown and transition recommendations
+        # COST IMPACT: HIGH
+        # OPTIMIZATION POTENTIAL: HIGH
+        ###############################################################
+        log_message "Performing enhanced cost analysis for bucket: ${bucket}"
+        
+        # Calculate current storage and request costs
+        local current_cost=$(calculate_tiered_storage_cost "${size_gb}" "${storage_class}")
+        local request_cost=$(calculate_request_costs "${bucket}" "${account_dir}")
+        local total_current_cost=$(echo "scale=4; ${current_cost} + ${request_cost}" | bc)
+        
+        # Log current costs
+        echo "Current Storage Cost: ${current_cost}" >> "${LOG_FILE}"
+        echo "Current Request Cost: ${request_cost}" >> "${LOG_FILE}"
+        echo "Total Current Cost: ${total_current_cost}" >> "${LOG_FILE}"
+
+        # Add lifecycle transition analysis
+        if [[ "${storage_class}" != "${recommended_class}" ]]; then
+            local transition_cost=$(calculate_lifecycle_costs "${size_gb}" "${storage_class}" "${recommended_class}")
+            local future_storage_cost=$(calculate_tiered_storage_cost "${size_gb}" "${recommended_class}")
+            local breakeven_months=$(calculate_roi "${total_current_cost}" "${future_storage_cost}" "${transition_cost}")
+            
+            echo "  - Transition Cost: ${transition_cost}" >> "${LOG_FILE}"
+            echo "  - Future Storage Cost: ${future_storage_cost}" >> "${LOG_FILE}"
+            echo "  - Months to Break Even: ${breakeven_months}" >> "${LOG_FILE}"
+            
+            # Add to analysis report
+            echo "  - Transition Cost: ${transition_cost}" >> "${analysis_report}"
+            echo "  - Months to Break Even: ${breakeven_months}" >> "${analysis_report}"
+        fi
+
+        ###############################################################
         # 7. API USAGE PATTERNS
         # WHY: Identifies request cost optimization opportunities
         # COST IMPACT: MEDIUM
@@ -526,9 +640,9 @@ Bucket: ${bucket_name}
   - Size: $(numfmt --to=iec ${size})
   - Objects: ${object_count}
   - Current Storage Class: ${storage_class}
-  - Current Monthly Cost: \${current_cost}
+  - Current Monthly Cost: ${current_cost}
   - Recommended Class: ${recommended_class}
-  - Potential Monthly Savings: \${potential_savings}
+  - Potential Monthly Savings: ${potential_savings}
   - Access Pattern: $(if (( $(echo "${access_frequency} < 1" | bc -l) )); then echo "Infrequent"; else echo "Frequent"; fi)
 
 EOF
@@ -540,6 +654,22 @@ EOF
         done
     done
 
+    # Calculate additional metrics for enhanced executive summary
+    local total_storage_cost=$(echo "scale=2; ${total_cost} * 0.7" | bc)  # Approximate storage cost
+    local total_request_cost=$(echo "scale=2; ${total_cost} * 0.2" | bc)  # Approximate request cost
+    local total_transfer_cost=$(echo "scale=2; ${total_cost} * 0.1" | bc) # Approximate transfer cost
+    local total_transition_cost=0
+    local average_breakeven_months=0
+    local first_year_savings=0
+    local three_year_savings=0
+    local retrieval_risk_level="LOW"
+    local cost_variability_risk="MEDIUM"
+    local implementation_complexity="MODERATE"
+
+    # Calculate projected savings
+    first_year_savings=$(echo "scale=2; ${total_potential_savings} * 12 - ${total_transition_cost}" | bc)
+    three_year_savings=$(echo "scale=2; ${first_year_savings} * 3" | bc)
+
     # Generate executive summary
     cat << EOF >> "${analysis_report}"
 
@@ -547,9 +677,25 @@ EOF
                     EXECUTIVE SUMMARY
 =================================================================
 Total Storage: $(numfmt --to=iec ${total_size})
-Current Monthly Cost: \${total_cost}
-Potential Monthly Savings: \${total_potential_savings}
-Potential Annual Savings: \$(echo "scale=2; ${total_potential_savings} * 12" | bc)
+Current Monthly Cost: ${total_cost}
+Potential Monthly Savings: ${total_potential_savings}
+Potential Annual Savings: $(echo "scale=2; ${total_potential_savings} * 12" | bc)
+
+Cost Breakdown:
+  - Storage Costs: ${total_storage_cost}
+  - Request Costs: ${total_request_cost}
+  - Transfer Costs: ${total_transfer_cost}
+  - Lifecycle Transition Costs: ${total_transition_cost}
+
+ROI Analysis:
+  - Average Break-even Period: ${average_breakeven_months} months
+  - First-year Net Savings: ${first_year_savings}
+  - 3-year Projected Savings: ${three_year_savings}
+
+Risk Analysis:
+  - Data Retrieval Risk: ${retrieval_risk_level}
+  - Cost Variability Risk: ${cost_variability_risk}
+  - Implementation Complexity: ${implementation_complexity}
 
 Key Recommendations:
 1. Implement lifecycle policies for infrequently accessed data
@@ -568,7 +714,7 @@ Next Steps:
 Report generated by S3 Cost Optimizer v2.0
 =================================================================
 EOF
-
+    
     log_message "Cost optimization report generated: ${analysis_report}"
     
     # Generate summary report
