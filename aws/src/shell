@@ -85,3 +85,69 @@ process_account_buckets() {
         echo "$account:$bucket:$has_tags:$has_object_logging:$current_time" >> "$ALL_BUCKETS_INFO"
     done
 }
+
+
+
+
+==
+
+
+check_advanced_selectors() {
+    local advanced_config="\$1"
+    local bucket="\$2"
+    local bucket_arn="arn:aws:s3:::${bucket}"
+    
+    echo "DEBUG: Processing bucket: $bucket" >&2
+    echo "DEBUG: Advanced config: $advanced_config" >&2
+    
+    echo "$advanced_config" | jq -r --arg bucket "$bucket_arn" '
+        .AdvancedEventSelectors // [] | map(
+            select(
+                .FieldSelectors | any(
+                    .Field == "eventCategory" and 
+                    (.Equals | index("Data"))
+                ) and any(
+                    .Field == "resources.type" and 
+                    (.Equals | index("AWS::S3::Object"))
+                ) and any(
+                    .Field == "resources.ARN" and 
+                    ((.StartsWith | index("arn:aws:s3:::*")) or (.StartsWith | index($bucket)))
+                )
+            )
+        ) | length > 0
+    '
+}
+Let's modify the main function to include debug logging:
+bash
+Copy Code
+process_account_buckets() {
+    local account=\$1
+    local current_time=$(date +'%Y-%m-%d %H:%M:%S')
+    
+    log_message "INFO" "Analyzing S3 buckets for account: $account"
+    
+    # ... (previous code remains the same until the trail checking loop)
+
+    echo "$trails" | jq -r '.[]' | while read -r trail; do
+        [ -z "$trail" ] && continue
+
+        log_message "DEBUG" "Checking trail: $trail"
+        
+        # Get advanced event selectors with error checking
+        local advanced_config
+        if ! advanced_config=$(aws cloudtrail get-advanced-event-selectors --trail-name "$trail" 2>/dev/null); then
+            log_message "WARNING" "Failed to get advanced event selectors for trail: $trail"
+            continue
+        fi
+
+        log_message "DEBUG" "Advanced config retrieved: $advanced_config"
+        
+        if [ "$(check_advanced_selectors "$advanced_config" "$bucket")" = "true" ]; then
+            log_message "INFO" "Found object logging for bucket: $bucket in trail: $trail"
+            has_object_logging=true
+            break
+        fi
+    done
+    
+    # ... (rest of the code remains the same)
+}
