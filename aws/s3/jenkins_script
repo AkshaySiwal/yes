@@ -19,11 +19,11 @@ LOG_FILE="${OUTPUT_DIR}/analysis.log"
 ###################
 log_message() {
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo "[$timestamp] \$1" >> "${LOG_FILE}"
+    echo "[$timestamp] $1" >> "${LOG_FILE}"
 }
 
 log_account_separator() {
-    local account_id=\$1
+    local account_id=$1
     echo "
 ========================================
 Account: ${account_id}
@@ -32,7 +32,7 @@ Start Time: $(date '+%Y-%m-%d %H:%M:%S')
 }
 
 log_account_end() {
-    local account_id=\$1
+    local account_id=$1
     echo "
 ----------------------------------------
 End Processing: ${account_id}
@@ -69,7 +69,7 @@ assume_master_role() {
 }
 
 assume_slave_role() {
-    local account_id=\$1
+    local account_id=$1
     log_message "Assuming slave role in account ${account_id}"
     
     local slave_credentials=$(aws sts assume-role \
@@ -86,7 +86,7 @@ assume_slave_role() {
 # DATA GATHERING
 ###################
 gather_s3_data() {
-    local account_id=\$1
+    local account_id=$1
     local account_dir="${OUTPUT_DIR}/${account_id}"
     
     ###############################################################
@@ -113,9 +113,9 @@ gather_s3_data() {
         # COST IMPACT: HIGH
         # - Storage costs are directly proportional to size
         # - Typical costs per GB/month:
-        #   * Standard: \$0.023
-        #   * Standard-IA: \$0.0125
-        #   * Glacier: \$0.004
+        #   * Standard: $0.023
+        #   * Standard-IA: $0.0125
+        #   * Glacier: $0.004
         # OPTIMIZATION POTENTIAL: HIGH
         # - Large buckets (>1TB) can save 65% with proper tiering
         # - High object counts might indicate:
@@ -192,8 +192,8 @@ gather_s3_data() {
         #   * Up to 200% for rarely accessed Standard data
         # - Retrieval costs:
         #   * Standard: Free
-        #   * IA: \$0.01 per GB
-        #   * Glacier: \$0.02-\$0.03 per GB
+        #   * IA: $0.01 per GB
+        #   * Glacier: $0.02-$0.03 per GB
         # OPTIMIZATION POTENTIAL: HIGH
         # - Proper storage class selection can save:
         #   * 30-60% on storage costs
@@ -215,12 +215,12 @@ gather_s3_data() {
         # WHY: Identifies immediate storage class optimization opportunities
         # COST IMPACT: HIGH
         # Current costs per GB/month (US East-1):
-        # - Standard: \$0.023
-        # - Intelligent-Tiering: \$0.023 + monitoring
-        # - Standard-IA: \$0.0125
-        # - One-Zone IA: \$0.01
-        # - Glacier: \$0.004
-        # - Deep Glacier: \$0.00099
+        # - Standard: $0.023
+        # - Intelligent-Tiering: $0.023 + monitoring
+        # - Standard-IA: $0.0125
+        # - One-Zone IA: $0.01
+        # - Glacier: $0.004
+        # - Deep Glacier: $0.00099
         # OPTIMIZATION POTENTIAL: HIGH
         # - Immediate savings opportunities:
         #   * Standard → IA: 45% saving
@@ -275,9 +275,9 @@ gather_s3_data() {
         # WHY: Identifies request cost optimization opportunities
         # COST IMPACT: MEDIUM
         # Current costs per 1000 requests:
-        # - PUT/COPY/POST: \$0.005
-        # - GET: \$0.0004
-        # - Lifecycle Transitions: \$0.01
+        # - PUT/COPY/POST: $0.005
+        # - GET: $0.0004
+        # - Lifecycle Transitions: $0.01
         # - Data Retrieval: Varies by storage class
         # OPTIMIZATION POTENTIAL: MEDIUM
         # - Request cost optimization can save:
@@ -319,8 +319,8 @@ cleanup_credentials() {
 # ERROR HANDLING
 ###################
 error_handler() {
-    local line_number=\$1
-    local account_id=\$2
+    local line_number=$1
+    local account_id=$2
     
     log_message "ERROR: Failed at line ${line_number}"
     [[ -n "${account_id}" ]] && log_message "ERROR: While processing account ${account_id}"
