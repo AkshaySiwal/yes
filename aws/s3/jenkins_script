@@ -11,7 +11,7 @@ MASTER_ROLE_NAME="master_role"
 SLAVE_ROLE_NAME="slave_role"
 SESSION_NAME="S3CostOpt-$(date +%Y%m%d-%H%M)"
 SLAVE_ACCOUNT_IDS=("slave1" "slave2" "slave3")
-OUTPUT_DIR="/path/to/s3-analysis/$(date +%Y%m%d)"
+OUTPUT_DIR="${WORKSPACE}/s3-analysis/$(date +%Y%m%d_%H%M%S)"
 LOG_FILE="${OUTPUT_DIR}/analysis.log"
 
 ###################
@@ -80,6 +80,111 @@ assume_slave_role() {
     export AWS_ACCESS_KEY_ID=$(echo "${slave_credentials}" | jq -r '.Credentials.AccessKeyId')
     export AWS_SECRET_ACCESS_KEY=$(echo "${slave_credentials}" | jq -r '.Credentials.SecretAccessKey')
     export AWS_SESSION_TOKEN=$(echo "${slave_credentials}" | jq -r '.Credentials.SessionToken')
+}
+
+
+
+###################
+# AWS PRICING CONFIGURATION - SEOUL REGION (ap-northeast-2)
+# Last Updated: January 2024
+# Reference: https://aws.amazon.com/s3/pricing/
+###################
+declare -A STORAGE_COSTS=(
+    # Standard Storage Pricing (per GB per month)
+    ["STANDARD"]="0.025"              # First 50TB
+    ["STANDARD_NEXT"]="0.024"         # Next 450TB
+    ["STANDARD_OVER"]="0.023"         # Over 500TB
+    
+    # Intelligent-Tiering (per GB per month)
+    ["INTELLIGENT_TIERING"]="0.025"   # Base cost
+    ["INTELLIGENT_TIERING_MONITORING"]="0.0025" # Per 1000 objects
+    
+    # Standard-IA (per GB per month)
+    ["STANDARD_IA"]="0.0125"          # Minimum 30 days
+    
+    # One Zone-IA (per GB per month)
+    ["ONEZONE_IA"]="0.0100"           # Minimum 30 days
+    
+    # Glacier Storage Classes
+    ["GLACIER_INSTANT"]="0.004"       # Minimum 90 days
+    ["GLACIER_FLEXIBLE"]="0.0036"     # Minimum 90 days
+    ["GLACIER_DEEP"]="0.00099"        # Minimum 180 days
+)
+
+declare -A RETRIEVAL_COSTS=(
+    # Data Retrieval Pricing (per GB)
+    ["STANDARD_IA"]="0.01"
+    ["ONEZONE_IA"]="0.01"
+    ["GLACIER_INSTANT"]="0.03"
+    ["GLACIER_FLEXIBLE"]="0.02"       # Standard retrieval
+    ["GLACIER_DEEP"]="0.02"           # Standard retrieval
+)
+
+declare -A REQUEST_COSTS=(
+    # Request Pricing (per 1000 requests)
+    ["PUT"]="0.0053"                  # PUT, COPY, POST, LIST
+    ["GET"]="0.00042"                 # GET, SELECT
+    ["LIFECYCLE"]="0.0106"            # Lifecycle transition
+    ["EARLY_DELETE"]="0.0125"         # For objects deleted before minimum storage duration
+)
+
+###################
+# MONITORING COST CALCULATION FUNCTIONS
+###################
+calculate_intelligent_tiering_monitoring_cost() {
+    local object_count=\$1
+    local monitoring_fee=${STORAGE_COSTS["INTELLIGENT_TIERING_MONITORING"]}
+    # Calculate monthly monitoring fee per 1000 objects
+    echo "scale=4; (${object_count} / 1000) * ${monitoring_fee}" | bc
+}
+
+calculate_potential_savings() {
+    local size_gb=\$1
+    local current_class=\$2
+    local target_class=\$3
+    local access_frequency=\$4  # requests per month
+    
+    # Calculate storage cost difference
+    local current_cost=$(echo "scale=4; ${size_gb} * ${STORAGE_COSTS[${current_class}]}" | bc)
+    local target_cost=$(echo "scale=4; ${size_gb} * ${STORAGE_COSTS[${target_class}]}" | bc)
+    
+    # Add retrieval costs if applicable
+    if [[ "${target_class}" != "STANDARD" ]]; then
+        local retrieval_cost=$(echo "scale=4; ${size_gb} * ${access_frequency} * ${RETRIEVAL_COSTS[${target_class}]}" | bc)
+        target_cost=$(echo "scale=4; ${target_cost} + ${retrieval_cost}" | bc)
+    fi
+    
+    # Calculate savings
+    echo "scale=4; ${current_cost} - ${target_cost}" | bc
+}
+
+###################
+# OPTIMIZATION ANALYSIS FUNCTIONS
+###################
+analyze_storage_class_recommendation() {
+    local size_gb=\$1
+    local access_frequency=\$2
+    local current_class=\$3
+    
+    # Analysis logic based on Seoul region specific thresholds
+    if (( $(echo "${access_frequency} < 1" | bc -l) )); then
+        # Rarely accessed data
+        if (( $(echo "${size_gb} > 500" | bc -l) )); then
+            echo "GLACIER_DEEP"
+        else
+            echo "GLACIER_FLEXIBLE"
+        fi
+    elif (( $(echo "${access_frequency} < 12" | bc -l) )); then
+        # Infrequently accessed data
+        echo "STANDARD_IA"
+    else
+        # Frequently accessed data
+        if (( $(echo "${size_gb} > 1000" | bc -l) )); then
+            echo "INTELLIGENT_TIERING"
+        else
+            echo "STANDARD"
+        fi
+    fi
 }
 
 ###################
@@ -355,6 +460,116 @@ main() {
         export AWS_SECRET_ACCESS_KEY="${MASTER_AWS_SECRET_ACCESS_KEY}"
         export AWS_SESSION_TOKEN="${MASTER_AWS_SESSION_TOKEN}"
     done
+    
+    ###############################################################
+    # COMPREHENSIVE COST OPTIMIZATION ANALYSIS
+    # WHY: Provides actionable insights across all accounts
+    # COST IMPACT: HIGH
+    ###############################################################
+    log_message "Generating comprehensive cost analysis report..."
+    local analysis_report="${OUTPUT_DIR}/cost_optimization_report.txt"
+    
+    # Initialize report
+    cat << EOF > "${analysis_report}"
+=================================================================
+                ENTERPRISE S3 COST OPTIMIZATION REPORT
+=================================================================
+Analysis Date: $(date '+%Y-%m-%d %H:%M:%S')
+Accounts Analyzed: ${#SLAVE_ACCOUNT_IDS[@]}
+-----------------------------------------------------------------
+
+EOF
+
+    # Analyze each account's data
+    local total_size=0
+    local total_cost=0
+    local total_potential_savings=0
+
+    for account_id in "${SLAVE_ACCOUNT_IDS[@]}"; do
+        local account_dir="${OUTPUT_DIR}/${account_id}"
+        
+        echo "Account: ${account_id}" >> "${analysis_report}"
+        echo "----------------------------------------" >> "${analysis_report}"
+        
+        # Process each bucket in the account
+        find "${account_dir}" -name "*_size.json" | while read size_file; do
+            local bucket_name=$(basename "${size_file}" _size.json)
+            local size=$(jq '.[0]' "${size_file}")
+            local object_count=$(jq '.[1]' "${size_file}")
+            local size_gb=$(echo "scale=4; ${size:-0} / 1073741824" | bc)
+            
+            # Calculate current costs
+            local storage_class=$(jq -r '.StorageClass // "STANDARD"' "${account_dir}/${bucket_name}_objects.json")
+            local current_cost=$(echo "scale=4; ${size_gb} * ${STORAGE_COSTS[${storage_class}]}" | bc)
+            
+            # Calculate monitoring costs if applicable
+            local monitoring_cost=0
+            if [[ "${storage_class}" == "INTELLIGENT_TIERING" ]]; then
+                monitoring_cost=$(calculate_intelligent_tiering_monitoring_cost "${object_count}")
+            fi
+            
+            # Get access patterns
+            local access_frequency=$(jq -r '.Datapoints[0].Average // 0' "${account_dir}/${bucket_name}_metrics.json")
+            
+            # Get recommended storage class
+            local recommended_class=$(analyze_storage_class_recommendation "${size_gb}" "${access_frequency}" "${storage_class}")
+            
+            # Calculate potential savings
+            local potential_savings=0
+            if [[ "${storage_class}" != "${recommended_class}" ]]; then
+                potential_savings=$(calculate_potential_savings "${size_gb}" "${storage_class}" "${recommended_class}" "${access_frequency}")
+            fi
+            
+            # Output bucket analysis
+            cat << EOF >> "${analysis_report}"
+Bucket: ${bucket_name}
+  - Size: $(numfmt --to=iec ${size})
+  - Objects: ${object_count}
+  - Current Storage Class: ${storage_class}
+  - Current Monthly Cost: \${current_cost}
+  - Recommended Class: ${recommended_class}
+  - Potential Monthly Savings: \${potential_savings}
+  - Access Pattern: $(if (( $(echo "${access_frequency} < 1" | bc -l) )); then echo "Infrequent"; else echo "Frequent"; fi)
+
+EOF
+
+            # Update totals
+            total_size=$(echo "${total_size} + ${size}" | bc)
+            total_cost=$(echo "${total_cost} + ${current_cost}" | bc)
+            total_potential_savings=$(echo "${total_potential_savings} + ${potential_savings}" | bc)
+        done
+    done
+
+    # Generate executive summary
+    cat << EOF >> "${analysis_report}"
+
+=================================================================
+                    EXECUTIVE SUMMARY
+=================================================================
+Total Storage: $(numfmt --to=iec ${total_size})
+Current Monthly Cost: \${total_cost}
+Potential Monthly Savings: \${total_potential_savings}
+Potential Annual Savings: \$(echo "scale=2; ${total_potential_savings} * 12" | bc)
+
+Key Recommendations:
+1. Implement lifecycle policies for infrequently accessed data
+2. Enable Intelligent-Tiering for variable access patterns
+3. Review and clean up unused objects
+4. Optimize storage class distribution
+5. Monitor API usage patterns
+
+Next Steps:
+1. Review detailed recommendations per bucket
+2. Prioritize high-impact changes
+3. Implement automated lifecycle policies
+4. Schedule regular cost optimization reviews
+
+=================================================================
+Report generated by S3 Cost Optimizer v2.0
+=================================================================
+EOF
+
+    log_message "Cost optimization report generated: ${analysis_report}"
     
     # Generate summary report
     log_message "Analysis completed. Check ${OUTPUT_DIR} for detailed reports."
