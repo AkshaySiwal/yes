@@ -1,0 +1,374 @@
+#!/bin/bash
+
+# Exit on any error
+set -e
+
+###################
+# CONFIGURATION
+###################
+MASTER_ACCOUNT_ID="MASTER_ID"
+MASTER_ROLE_NAME="master_role"
+SLAVE_ROLE_NAME="slave_role"
+SESSION_NAME="S3CostOpt-$(date +%Y%m%d-%H%M)"
+SLAVE_ACCOUNT_IDS=("slave1" "slave2" "slave3")
+OUTPUT_DIR="/path/to/s3-analysis/$(date +%Y%m%d)"
+LOG_FILE="${OUTPUT_DIR}/analysis.log"
+
+###################
+# LOGGING FUNCTIONS
+###################
+log_message() {
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "[$timestamp] \$1" >> "${LOG_FILE}"
+}
+
+log_account_separator() {
+    local account_id=\$1
+    echo "
+========================================
+Account: ${account_id}
+Start Time: $(date '+%Y-%m-%d %H:%M:%S')
+========================================" >> "${LOG_FILE}"
+}
+
+log_account_end() {
+    local account_id=\$1
+    echo "
+----------------------------------------
+End Processing: ${account_id}
+End Time: $(date '+%Y-%m-%d %H:%M:%S')
+----------------------------------------
+" >> "${LOG_FILE}"
+}
+
+###################
+# DIRECTORY SETUP
+###################
+setup_directories() {
+    mkdir -p "${OUTPUT_DIR}"
+    chmod 700 "${OUTPUT_DIR}"
+    for account_id in "${SLAVE_ACCOUNT_IDS[@]}"; do
+        mkdir -p "${OUTPUT_DIR}/${account_id}"
+    done
+}
+
+###################
+# ROLE ASSUMPTION
+###################
+assume_master_role() {
+    log_message "Assuming master role in account ${MASTER_ACCOUNT_ID}"
+    
+    local master_credentials=$(aws sts assume-role \
+        --role-arn "arn:aws:iam::${MASTER_ACCOUNT_ID}:role/${MASTER_ROLE_NAME}" \
+        --role-session-name "${SESSION_NAME}" \
+        --output json)
+    
+    export AWS_ACCESS_KEY_ID=$(echo "${master_credentials}" | jq -r '.Credentials.AccessKeyId')
+    export AWS_SECRET_ACCESS_KEY=$(echo "${master_credentials}" | jq -r '.Credentials.SecretAccessKey')
+    export AWS_SESSION_TOKEN=$(echo "${master_credentials}" | jq -r '.Credentials.SessionToken')
+}
+
+assume_slave_role() {
+    local account_id=\$1
+    log_message "Assuming slave role in account ${account_id}"
+    
+    local slave_credentials=$(aws sts assume-role \
+        --role-arn "arn:aws:iam::${account_id}:role/${SLAVE_ROLE_NAME}" \
+        --role-session-name "${SESSION_NAME}" \
+        --output json)
+    
+    export AWS_ACCESS_KEY_ID=$(echo "${slave_credentials}" | jq -r '.Credentials.AccessKeyId')
+    export AWS_SECRET_ACCESS_KEY=$(echo "${slave_credentials}" | jq -r '.Credentials.SecretAccessKey')
+    export AWS_SESSION_TOKEN=$(echo "${slave_credentials}" | jq -r '.Credentials.SessionToken')
+}
+
+###################
+# DATA GATHERING
+###################
+gather_s3_data() {
+    local account_id=\$1
+    local account_dir="${OUTPUT_DIR}/${account_id}"
+    
+    ###############################################################
+    # 1. BUCKET INVENTORY
+    # WHY: Foundation for cost analysis - identifies all S3 resources
+    # COST IMPACT: NO DIRECT COST
+    # - Free API call
+    # - Essential for identifying unused/forgotten buckets
+    # OPTIMIZATION POTENTIAL: HIGH
+    # - Helps identify:
+    #   * Redundant buckets (potential 100% saving for removed buckets)
+    #   * Test/Dev buckets that can be cleaned up
+    #   * Buckets without proper ownership
+    ###############################################################
+    log_message "Gathering bucket inventory for ${account_id}"
+    aws s3api list-buckets \
+        --query 'Buckets[*].[Name,CreationDate]' \
+        --output json > "${account_dir}/buckets_list.json"
+
+    for bucket in $(jq -r '.[].Name' "${account_dir}/buckets_list.json"); do
+        ###############################################################
+        # 2. BUCKET SIZES AND OBJECT COUNTS
+        # WHY: Identifies high-cost storage areas and object distribution
+        # COST IMPACT: HIGH
+        # - Storage costs are directly proportional to size
+        # - Typical costs per GB/month:
+        #   * Standard: \$0.023
+        #   * Standard-IA: \$0.0125
+        #   * Glacier: \$0.004
+        # OPTIMIZATION POTENTIAL: HIGH
+        # - Large buckets (>1TB) can save 65% with proper tiering
+        # - High object counts might indicate:
+        #   * Need for object expiration (potential 30-50% saving)
+        #   * Opportunity for object compression (10-30% saving)
+        ###############################################################
+        log_message "Analyzing size and objects for bucket: ${bucket}"
+        aws s3api list-objects-v2 \
+            --bucket "${bucket}" \
+            --query '[sum(Contents[].Size), length(Contents[])]' \
+            --output json > "${account_dir}/${bucket}_size.json"
+
+        ###############################################################
+        # Calculate and log bucket metrics
+        # WHY: Provides human-readable size analysis and object count
+        # COST IMPACT: NO DIRECT COST (Analysis only)
+        # USAGE:
+        # - Helps identify oversized buckets quickly
+        # - Flags buckets with unusual object counts
+        # - Enables quick cost estimation:
+        #   * >1TB in Standard: High cost impact
+        #   * >100K objects: Check for small file optimization
+        ###############################################################
+        total_size=$(jq '.[0]' "${account_dir}/${bucket}_size.json")
+        object_count=$(jq '.[1]' "${account_dir}/${bucket}_size.json")
+        echo "Bucket: ${bucket}, Size: $(numfmt --to=iec ${total_size}), Objects: ${object_count}" >> "${LOG_FILE}"
+
+        ###############################################################
+        # 3. BUCKET TAGS
+        # WHY: Critical for cost allocation and compliance management
+        # COST IMPACT: MEDIUM
+        # - No direct cost but affects:
+        #   * Cost allocation accuracy
+        #   * Compliance requirements (especially PII data)
+        #   * Lifecycle management effectiveness
+        # OPTIMIZATION POTENTIAL: MEDIUM
+        # - Proper tagging enables:
+        #   * Automated lifecycle rules (15-30% saving)
+        #   * Better cost tracking
+        #   * Compliance-based storage decisions
+        ###############################################################
+        log_message "Getting tags for bucket: ${bucket}"
+        aws s3api get-bucket-tagging \
+            --bucket "${bucket}" \
+            --output json > "${account_dir}/${bucket}_tags.json" 2>/dev/null || \
+            echo '{"TagSet": []}' > "${account_dir}/${bucket}_tags.json"
+
+        ###############################################################
+        # 4. LIFECYCLE POLICIES
+        # WHY: Automated cost optimization through object lifecycle management
+        # COST IMPACT: HIGH
+        # - Missing lifecycle policies often lead to:
+        #   * Unnecessary storage costs (up to 75% extra)
+        #   * Retention of unused objects
+        #   * Inefficient storage class usage
+        # OPTIMIZATION POTENTIAL: HIGH
+        # Typical savings:
+        # - Standard → IA transition: 33% saving
+        # - Standard → Glacier: 75% saving
+        # - Deletion of unused objects: 100% saving for those objects
+        ###############################################################
+        log_message "Getting lifecycle policies for bucket: ${bucket}"
+        aws s3api get-bucket-lifecycle-configuration \
+            --bucket "${bucket}" \
+            --output json > "${account_dir}/${bucket}_lifecycle.json" 2>/dev/null || \
+            echo '{}' > "${account_dir}/${bucket}_lifecycle.json"
+
+        ###############################################################
+        # 5. ACCESS PATTERNS
+        # WHY: Determines optimal storage class and access requirements
+        # COST IMPACT: HIGH
+        # - Wrong storage class can increase costs by:
+        #   * Up to 50% for frequently accessed IA data
+        #   * Up to 200% for rarely accessed Standard data
+        # - Retrieval costs:
+        #   * Standard: Free
+        #   * IA: \$0.01 per GB
+        #   * Glacier: \$0.02-\$0.03 per GB
+        # OPTIMIZATION POTENTIAL: HIGH
+        # - Proper storage class selection can save:
+        #   * 30-60% on storage costs
+        #   * 40-80% on infrequently accessed data
+        ###############################################################
+        log_message "Getting access metrics for bucket: ${bucket}"
+        aws cloudwatch get-metric-statistics \
+            --namespace AWS/S3 \
+            --metric-name NumberOfObjects \
+            --dimensions Name=BucketName,Value="${bucket}" \
+            --start-time $(date -d '30 days ago' --iso-8601=seconds) \
+            --end-time $(date --iso-8601=seconds) \
+            --period 86400 \
+            --statistics Average \
+            --output json > "${account_dir}/${bucket}_metrics.json"
+
+        ###############################################################
+        # 6. STORAGE CLASS DISTRIBUTION
+        # WHY: Identifies immediate storage class optimization opportunities
+        # COST IMPACT: HIGH
+        # Current costs per GB/month (US East-1):
+        # - Standard: \$0.023
+        # - Intelligent-Tiering: \$0.023 + monitoring
+        # - Standard-IA: \$0.0125
+        # - One-Zone IA: \$0.01
+        # - Glacier: \$0.004
+        # - Deep Glacier: \$0.00099
+        # OPTIMIZATION POTENTIAL: HIGH
+        # - Immediate savings opportunities:
+        #   * Standard → IA: 45% saving
+        #   * Standard → Glacier: 82% saving
+        #   * IA → Glacier: 68% saving
+        ###############################################################
+        log_message "Analyzing storage classes for bucket: ${bucket}"
+        aws s3api list-objects-v2 \
+            --bucket "${bucket}" \
+            --query 'Contents[*].[Key,Size,StorageClass,LastModified]' \
+            --output json > "${account_dir}/${bucket}_objects.json"
+
+        ###############################################################
+        # Analyze and log storage class distribution
+        # WHY: Provides immediate visibility into storage class usage
+        # COST IMPACT: NO DIRECT COST (Analysis only)
+        # INSIGHTS PROVIDED:
+        # - Identifies improper storage class usage
+        # - Shows potential for immediate cost reduction
+        # - Helps in planning storage class transitions
+        # OPTIMIZATION OPPORTUNITIES:
+        # - Large Standard class count → Consider IA/Intelligent Tiering
+        # - High Glacier object count → Check retrieval patterns
+        # - Mixed storage classes → Review lifecycle policies
+        ###############################################################
+        jq -r '.[].StorageClass' "${account_dir}/${bucket}_objects.json" | \
+            sort | uniq -c | \
+            while read -r count class; do
+                # Log distribution for cost analysis
+                echo "Bucket: ${bucket}, Class: ${class}, Count: ${count}" >> "${LOG_FILE}"
+                
+                # Add analysis hints based on storage class
+                case ${class} in
+                    "STANDARD")
+                        if [ ${count} -gt 10000 ]; then
+                            echo "  HINT: Large Standard class count (${count}) - Consider IA/Intelligent Tiering" >> "${LOG_FILE}"
+                        fi
+                        ;;
+                    "STANDARD_IA")
+                        if [ ${count} -lt 100 ]; then
+                            echo "  HINT: Small IA object count (${count}) - May not be cost-effective" >> "${LOG_FILE}"
+                        fi
+                        ;;
+                    "GLACIER")
+                        echo "  HINT: Glacier objects (${count}) - Verify retrieval patterns" >> "${LOG_FILE}"
+                        ;;
+                esac
+            done
+
+        ###############################################################
+        # 7. API USAGE PATTERNS
+        # WHY: Identifies request cost optimization opportunities
+        # COST IMPACT: MEDIUM
+        # Current costs per 1000 requests:
+        # - PUT/COPY/POST: \$0.005
+        # - GET: \$0.0004
+        # - Lifecycle Transitions: \$0.01
+        # - Data Retrieval: Varies by storage class
+        # OPTIMIZATION POTENTIAL: MEDIUM
+        # - Request cost optimization can save:
+        #   * 40-60% with proper batching
+        #   * 30-50% with CloudFront caching
+        #   * 20-40% with better application patterns
+        ###############################################################
+        log_message "Getting API usage patterns for bucket: ${bucket}"
+        aws cloudwatch get-metric-data \
+            --metric-data-queries '[
+                {
+                    "Id": "gets",
+                    "MetricStat": {
+                        "Metric": {
+                            "Namespace": "AWS/S3",
+                            "MetricName": "GetRequests",
+                            "Dimensions": [{"Name": "BucketName", "Value": "'${bucket}'"}]
+                        },
+                        "Period": 86400,
+                        "Stat": "Sum"
+                    }
+                }
+            ]' \
+            --start-time $(date -d '30 days ago' --iso-8601=seconds) \
+            --end-time $(date --iso-8601=seconds) \
+            --output json > "${account_dir}/${bucket}_api_usage.json"
+    done
+}
+###################
+# CLEANUP
+###################
+cleanup_credentials() {
+    unset AWS_ACCESS_KEY_ID
+    unset AWS_SECRET_ACCESS_KEY
+    unset AWS_SESSION_TOKEN
+}
+
+###################
+# ERROR HANDLING
+###################
+error_handler() {
+    local line_number=\$1
+    local account_id=\$2
+    
+    log_message "ERROR: Failed at line ${line_number}"
+    [[ -n "${account_id}" ]] && log_message "ERROR: While processing account ${account_id}"
+    
+    cleanup_credentials
+    exit 1
+}
+
+###################
+# MAIN EXECUTION
+###################
+main() {
+    setup_directories
+    
+    # Assume master role
+    assume_master_role
+    
+    # Store master credentials
+    MASTER_AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}"
+    MASTER_AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}"
+    MASTER_AWS_SESSION_TOKEN="${AWS_SESSION_TOKEN}"
+    
+    # Process each slave account
+    for slave_account_id in "${SLAVE_ACCOUNT_IDS[@]}"; do
+        log_account_separator "${slave_account_id}"
+        assume_slave_role "${slave_account_id}"
+        gather_s3_data "${slave_account_id}"
+        log_account_end "${slave_account_id}"
+        
+        # Restore master credentials for next iteration
+        export AWS_ACCESS_KEY_ID="${MASTER_AWS_ACCESS_KEY_ID}"
+        export AWS_SECRET_ACCESS_KEY="${MASTER_AWS_SECRET_ACCESS_KEY}"
+        export AWS_SESSION_TOKEN="${MASTER_AWS_SESSION_TOKEN}"
+    done
+    
+    # Generate summary report
+    log_message "Analysis completed. Check ${OUTPUT_DIR} for detailed reports."
+    log_message "High-impact optimization opportunities found:"
+    find "${OUTPUT_DIR}" -name "*_size.json" -exec jq -r '
+        select(.[0] > 1000000000) | "Large bucket found: \(.[0])"
+    ' {} \;
+    
+    # Final cleanup
+    cleanup_credentials
+}
+
+# Set error handler
+trap 'error_handler ${LINENO}' ERR
+
+# Execute main function
+main
