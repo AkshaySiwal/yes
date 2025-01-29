@@ -14,15 +14,43 @@ SESSION_NAME = f"S3Analysis-{BUILD_NUMBER}"
 
 
 class S3Analyzer:
-    def __init__(self, session_name: str, slave_role:str):
+    def __init__(self, session_name: str, master_role: str, slave_role:str):
         self.session_name = session_name
+        self.master_role = master_role
         self.slave_role = slave_role
-        # Use EC2's instance profile for master account
-        self.master_session = boto3.Session()
-        # self.results = {}
+        # Start with EC2's instance profile
+        self.base_session = boto3.Session()
+        self.master_session = None
+
+
+    def assume_master_role(self) -> boto3.Session:
+        """Assume master role using instance profile credentials"""
+        try:
+            sts_client = self.base_session.client('sts')
+            response = sts_client.assume_role(
+                RoleArn=self.master_role,
+                RoleSessionName=f"{self.session_name}-master"
+            )
+
+            # Create session with master role credentials
+            self.master_session = boto3.Session(
+                aws_access_key_id=response['Credentials']['AccessKeyId'],
+                aws_secret_access_key=response['Credentials']['SecretAccessKey'],
+                aws_session_token=response['Credentials']['SessionToken']
+            )
+            return self.master_session
+
+        except Exception as e:
+            print(f"Error assuming master role: {str(e)}")
+            raise
+        
 
     def assume_slave_role(self, account_id: str, role_name: str) -> boto3.Session:
+        """Assume slave role using master role credentials"""
         try:
+            if not self.master_session:
+                self.assume_master_role()
+
             sts_client = self.master_session.client('sts')
             role_arn = f'arn:aws:iam::{account_id}:role/{role_name}'
 
@@ -136,6 +164,9 @@ class S3Analyzer:
         try:
             results = {'master_account': {}, 'slave_accounts': {}}
 
+            # Assume master role first
+            self.assume_master_role()
+
             if check_master_too:
                 s3_client = self.master_session.client('s3')
                 try:
@@ -162,6 +193,8 @@ class S3Analyzer:
             for account_id in slave_accounts:
                 try:
                     print(f"Analyzing account {account_id}...")
+                    # Re-assume master role before each slave role assumption
+                    self.assume_master_role()
                     slave_session = self.assume_slave_role(account_id, self.slave_role)
                     s3_client = slave_session.client('s3')
 
@@ -340,15 +373,18 @@ class Utility:
 
 if __name__ == "__main__":
     # Configuration
-
-
-    # List of slave accounts to analyze
+    MASTER_ROLE_ARN = 'arn:aws:iam::master_account_id:role/master_role_name'
     SLAVE_ACCOUNTS = [ '111111111111' ]
     SLAVE_ROLE = 'xyx'
     CHECK_MASTER = True
 
 
     # Validate configuration
+    # Validate configuration
+    if not MASTER_ROLE_ARN:
+        print("Error: No master role ARN provided")
+        sys.exit(1)
+
     if not SLAVE_ACCOUNTS:
         print("Error: No slave accounts provided")
         sys.exit(1)
@@ -359,7 +395,7 @@ if __name__ == "__main__":
 
 
     # Initialize and run analysis
-    analyzer = S3Analyzer(session_name=SESSION_NAME, slave_role=SLAVE_ROLE)
+    analyzer = S3Analyzer(session_name=SESSION_NAME, master_role=MASTER_ROLE_ARN, slave_role=SLAVE_ROLE)
     results = analyzer.analyze_accounts(slave_accounts=SLAVE_ACCOUNTS, check_master_too=CHECK_MASTER)
 
     
