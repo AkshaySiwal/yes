@@ -14,7 +14,13 @@ def getReactiveParams() {
                 $class: 'GroovyScript',
                 fallbackScript: [classpath: [], sandbox: true, script: 
             '''
-            return "<style>[name='ACCOUNT'] { display: none !important; }</style>"
+            return """
+                        <div style='display: none;'></div>
+                        <style>
+                            [name='ACCOUNT'] { display: none !important; }
+                            .setting-input { display: none !important; }
+                        </style>
+                    """
             '''
         ],
                 script: [
@@ -23,8 +29,7 @@ def getReactiveParams() {
                     script: '''
                         if (CONFIGURATION_METHOD == 'Manual Entry') {
                             return """
-                            <style>[name='ACCOUNT'] .setting-name { display: none !important; }</style>
-                                <div class='form-group'>
+                            <div class='form-group'>
                                     <label class='control-label' style='display: block; font-weight: bold; margin-bottom: 5px;'>
                                         Account <span style='color: #FF0000;'>*</span>
                                     </label>
@@ -38,9 +43,18 @@ def getReactiveParams() {
                                            style='width: 300px; padding: 5px;'
                                            required>
                                 </div>
+                                <style>
+                                    [name='ACCOUNT'] .setting-name { display: none !important; }
+                                </style>
                             """
                         }
-                        return "<style>[name='ACCOUNT'] { display: none !important; }</style>"
+                        return """
+                            <div style='display: none;'></div>
+                            <style>
+                                [name='ACCOUNT'] { display: none !important; }
+                                .setting-input { display: none !important; }
+                            </style>
+                        """
                     '''
                 ]
             ]
