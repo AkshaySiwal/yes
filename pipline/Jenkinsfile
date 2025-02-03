@@ -20,12 +20,18 @@ def getReactiveParams() {
                         if (INPUT_TYPE == 'Manual') {
                             return """
                                 <div class='form-group'>
+                                    <label class='control-label' style='display: block; font-weight: bold; margin-bottom: 5px;'>
+                                        ACCOUNT <span style='color: #FF0000;'>*</span>
+                                    </label>
                                     <input type='text' 
                                            class='setting-input' 
                                            name='value' 
                                            placeholder='Enter Account ID'
                                            style='width: 300px; padding: 5px;'
                                            required>
+                                    <div style='font-size: 12px; color: #666; margin-top: 5px;'>
+                                        Enter the Account ID for manual configuration
+                                    </div>
                                 </div>
                             """
                         }
@@ -48,12 +54,18 @@ def getReactiveParams() {
                         if (INPUT_TYPE == 'Manual') {
                             return """
                                 <div class='form-group'>
+                                    <label class='control-label' style='display: block; font-weight: bold; margin-bottom: 5px;'>
+                                        ROLE <span style='color: #FF0000;'>*</span>
+                                    </label>
                                     <input type='text' 
                                            class='setting-input' 
                                            name='value' 
                                            placeholder='Enter Role Name'
                                            style='width: 300px; padding: 5px;'
                                            required>
+                                    <div style='font-size: 12px; color: #666; margin-top: 5px;'>
+                                        Enter the Role Name for manual configuration
+                                    </div>
                                 </div>
                             """
                         }
@@ -76,11 +88,17 @@ def getReactiveParams() {
                         if (INPUT_TYPE == 'File') {
                             return """
                                 <div class='form-group'>
+                                    <label class='control-label' style='display: block; font-weight: bold; margin-bottom: 5px;'>
+                                        INPUT FILE <span style='color: #FF0000;'>*</span>
+                                    </label>
                                     <input type='file' 
                                            class='setting-input' 
                                            name='value'
                                            style='width: 300px;'
                                            required>
+                                    <div style='font-size: 12px; color: #666; margin-top: 5px;'>
+                                        Select a file to upload
+                                    </div>
                                 </div>
                             """
                         }
