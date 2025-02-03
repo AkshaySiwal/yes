@@ -13,16 +13,31 @@ def getReactiveParams() {
             referencedParameters: 'INPUT_TYPE',
             script: [
                 $class: 'GroovyScript',
-                fallbackScript: [classpath: [], sandbox: true, script: 'return ""'],
+                fallbackScript: [classpath: [], sandbox: true, script: 
+                    '''
+                    return """
+                        <style>
+                            .parameter-name[name='ACCOUNT11'] { display: none !important; }
+                            .setting-name { display: none !important; }
+                            .hidden-parameter { display: none !important; }
+                        </style>
+                    """
+                    '''
+                ],
                 script: [
                     classpath: [], 
                     sandbox: true,
                     script: '''
+                        def html = """
+                            <style>
+                                .parameter-name[name='ACCOUNT11'] { display: none !important; }
+                                .setting-name { display: none !important; }
+                                .hidden-parameter { display: none !important; }
+                            </style>
+                        """
+                        
                         if (INPUT_TYPE == 'Manual') {
-                            return """
-                                <style>
-                                    [name='ACCOUNT11'] .setting-name { display: none !important; }
-                                </style>
+                            html += """
                                 <div class='form-group' style='margin-top: -10px;'>
                                     <label class='control-label' style='display: block; font-weight: bold; margin-bottom: 5px;'>
                                         ACCOUNT <span style='color: #FF0000;'>*</span>
@@ -39,7 +54,7 @@ def getReactiveParams() {
                                 </div>
                             """
                         }
-                        return ""
+                        return html
                     '''
                 ]
             ]
