@@ -1,36 +1,125 @@
+// Jenkinsfile
+properties([
+    parameters([
+        choice(
+            name: 'INPUT_TYPE',
+            choices: ['', 'File', 'Manual'],
+            description: 'Select input type'
+        )
+    ])
+])
+
+// Dynamic parameters based on INPUT_TYPE selection
+if (params.INPUT_TYPE == 'Manual') {
+    properties([
+        parameters([
+            choice(
+                name: 'INPUT_TYPE',
+                choices: ['', 'File', 'Manual'],
+                description: 'Select input type'
+            ),
+            string(
+                name: 'ACCOUNT',
+                defaultValue: '',
+                description: 'Enter Account ID',
+                trim: true
+            ),
+            string(
+                name: 'ROLE',
+                defaultValue: '',
+                description: 'Enter Role Name',
+                trim: true
+            )
+        ])
+    ])
+} else if (params.INPUT_TYPE == 'File') {
+    properties([
+        parameters([
+            choice(
+                name: 'INPUT_TYPE',
+                choices: ['', 'File', 'Manual'],
+                description: 'Select input type'
+            ),
+            file(
+                name: 'INPUT_FILE',
+                description: 'Upload your input file'
+            )
+        ])
+    ])
+}
+
 pipeline {
     agent any
     
-    parameters {
-        choice(name: 'SELECTION_TYPE', choices: ['', 'File', 'Manual'], description: 'Select input type')
-        string(name: 'ACCOUNT', defaultValue: '', description: 'Enter Account ID', trim: true)
-        string(name: 'ROLE', defaultValue: '', description: 'Enter Role Name', trim: true)
-        file(name: 'INPUT_FILE', description: 'Upload your input file')
+    options {
+        disableConcurrentBuilds()
     }
     
     stages {
-        stage('Run Python Script') {
+        stage('Parameter Validation') {
             steps {
                 script {
+                    // First build will only show INPUT_TYPE
+                    if (!params.INPUT_TYPE) {
+                        currentBuild.result = 'SUCCESS'
+                        return
+                    }
+                    
                     // Validate parameters based on selection
-                    if (params.SELECTION_TYPE == 'Manual') {
+                    if (params.INPUT_TYPE == 'Manual') {
                         if (!params.ACCOUNT?.trim() || !params.ROLE?.trim()) {
                             error "Account and Role are required for Manual selection"
                         }
-                    } else if (params.SELECTION_TYPE == 'File') {
+                        echo "Running in Manual mode with Account: ${params.ACCOUNT} and Role: ${params.ROLE}"
+                    } else if (params.INPUT_TYPE == 'File') {
                         if (!params.INPUT_FILE) {
                             error "File is required for File selection"
                         }
+                        echo "Running in File mode with uploaded file"
                     }
+                }
+            }
+        }
+        
+        stage('Run Python Script') {
+            when {
+                expression { params.INPUT_TYPE != '' }
+            }
+            steps {
+                script {
+                    // Write Python script dynamically
+                    writeFile file: 'script.py', text: '''
+import os
+
+def main():
+    # Reading Jenkins parameters
+    input_type = os.environ.get('INPUT_TYPE')
+    
+    if input_type == 'Manual':
+        account = os.environ.get('ACCOUNT')
+        role = os.environ.get('ROLE')
+        print(f"Running in Manual mode with Account: {account} and Role: {role}")
+        
+    elif input_type == 'File':
+        file_path = os.environ.get('FILE_PATH')
+        print(f"Running in File mode with file: {file_path}")
+        # Add your file processing logic here
+        with open(file_path, 'r') as file:
+            content = file.read()
+            print(f"File content: {content}")
+
+if __name__ == "__main__":
+    main()
+'''
                     
-                    // Run the Python script
+                    // Set environment variables and run Python script
                     withEnv([
-                        "SELECTION_TYPE=${params.SELECTION_TYPE}",
-                        "ACCOUNT=${params.ACCOUNT}",
-                        "ROLE=${params.ROLE}",
-                        "FILE_PATH=${params.INPUT_FILE}"
+                        "INPUT_TYPE=${params.INPUT_TYPE}",
+                        "ACCOUNT=${params.ACCOUNT ?: ''}",
+                        "ROLE=${params.ROLE ?: ''}",
+                        "FILE_PATH=${params.INPUT_FILE ?: ''}"
                     ]) {
-                        sh 'python3 pipline/your_script.py'
+                        sh 'python3 script.py'
                     }
                 }
             }
