@@ -28,7 +28,7 @@ def getReactiveParams() {
                                     </div>
                                     <input type='text' 
                                            class='setting-input' 
-                                           name='name' 
+                                           name='value' 
                                            placeholder='Enter Account ID'
                                            style='width: 300px; padding: 5px;'
                                            required>
