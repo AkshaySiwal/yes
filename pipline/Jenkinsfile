@@ -1,0 +1,39 @@
+pipeline {
+    agent any
+    
+    parameters {
+        choice(name: 'SELECTION_TYPE', choices: ['', 'File', 'Manual'], description: 'Select input type')
+        string(name: 'ACCOUNT', defaultValue: '', description: 'Enter Account ID', trim: true)
+        string(name: 'ROLE', defaultValue: '', description: 'Enter Role Name', trim: true)
+        file(name: 'INPUT_FILE', description: 'Upload your input file')
+    }
+    
+    stages {
+        stage('Run Python Script') {
+            steps {
+                script {
+                    // Validate parameters based on selection
+                    if (params.SELECTION_TYPE == 'Manual') {
+                        if (!params.ACCOUNT?.trim() || !params.ROLE?.trim()) {
+                            error "Account and Role are required for Manual selection"
+                        }
+                    } else if (params.SELECTION_TYPE == 'File') {
+                        if (!params.INPUT_FILE) {
+                            error "File is required for File selection"
+                        }
+                    }
+                    
+                    // Run the Python script
+                    withEnv([
+                        "SELECTION_TYPE=${params.SELECTION_TYPE}",
+                        "ACCOUNT=${params.ACCOUNT}",
+                        "ROLE=${params.ROLE}",
+                        "FILE_PATH=${params.INPUT_FILE}"
+                    ]) {
+                        sh 'python3 your_script.py'
+                    }
+                }
+            }
+        }
+    }
+}
