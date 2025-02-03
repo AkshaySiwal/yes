@@ -30,7 +30,7 @@ pipeline {
                         "ROLE=${params.ROLE}",
                         "FILE_PATH=${params.INPUT_FILE}"
                     ]) {
-                        sh 'python3 your_script.py'
+                        sh 'python3 pipline/your_script.py'
                     }
                 }
             }
