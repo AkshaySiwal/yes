@@ -29,8 +29,6 @@ def getReactiveParams() {
                                     <input type='text' 
                                            class='setting-input' 
                                            name='value'
-                                           id='account-input'
-                                           data-param-type='account'
                                            placeholder='Enter Account ID'
                                            style='width: 300px; padding: 5px;'
                                            required>
