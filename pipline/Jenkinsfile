@@ -139,7 +139,7 @@ pipeline {
                         currentBuild.result = 'SUCCESS'
                         return
                     }
-                  
+                    sh 'printenv | sort'  
                     if (params.CONFIGURATION_METHOD == 'Manual Entry') {
                         if (!params.ACCOUNT?.trim() || !params.ROLE?.trim()) {
                             error "Account and Role are required for Manual selection"
