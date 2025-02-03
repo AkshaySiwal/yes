@@ -54,83 +54,19 @@ def getReactiveParams() {
                         if (INPUT_TYPE == 'Manual') {
                             return """
                                 <div class='form-group'>
-                                    <input type='text' 
-                                           class='setting-input' 
-                                           name='value' 
-                                           placeholder='Enter Role Name'
-                                           style='width: 300px; padding: 5px;'
-                                           required>
-                                </div>
-                            """
-                        }
-                        return ""
-                    '''
-                ]
-            ]
-        ],
-        // Jenkinsfile
-def getReactiveParams() {
-    return [
-        choice(
-            name: 'INPUT_TYPE',
-            choices: ['', 'File', 'Manual'],
-            description: 'Select input type'
-        ),
-        [$class: 'DynamicReferenceParameter',
-            choiceType: 'ET_FORMATTED_HTML',
-            name: '',
-            referencedParameters: 'INPUT_TYPE',
-            script: [
-                $class: 'GroovyScript',
-                fallbackScript: [classpath: [], sandbox: true, script: 'return ""'],
-                script: [
-                    classpath: [], 
-                    sandbox: true,
-                    script: '''
-                        if (INPUT_TYPE == 'Manual') {
-                            return """
-                                <div class='form-group'>
                                     <label class='control-label' style='display: block; font-weight: bold; margin-bottom: 5px;'>
-                                        ACCOUNT <span style='color: #FF0000;'>*</span>
+                                        Role <span style='color: #FF0000;'>*</span>
                                     </label>
                                     <div style='font-size: 12px; color: #666; margin-top: 5px;'>
-                                        Enter the Account ID for manual configuration
+                                        Enter the Role Name for manual configuration
                                     </div>
                                     <input type='text' 
                                            class='setting-input' 
                                            name='value' 
-                                           placeholder='Enter Account ID'
-                                           style='width: 300px; padding: 5px;'
-                                           required>
-                                </div>
-                            """
-                        }
-                        return ""
-                    '''
-                ]
-            ]
-        ],
-        [$class: 'DynamicReferenceParameter',
-            choiceType: 'ET_FORMATTED_HTML',
-            name: '',
-            referencedParameters: 'INPUT_TYPE',
-            script: [
-                $class: 'GroovyScript',
-                fallbackScript: [classpath: [], sandbox: true, script: 'return ""'],
-                script: [
-                    classpath: [], 
-                    sandbox: true,
-                    script: '''
-                        if (INPUT_TYPE == 'Manual') {
-                            return """
-                                <div class='form-group'>
-                                    <input type='text' 
-                                           class='setting-input' 
-                                           name='value' 
                                            placeholder='Enter Role Name'
                                            style='width: 300px; padding: 5px;'
                                            required>
-                                </div>
+                                </div>                                
                             """
                         }
                         return ""
@@ -152,10 +88,17 @@ def getReactiveParams() {
                         if (INPUT_TYPE == 'File') {
                             return """
                                 <div class='form-group'>
+                                    <label class='control-label' style='display: block; font-weight: bold; margin-bottom: 5px;'>
+                                        Role <span style='color: #FF0000;'>*</span>
+                                    </label>
+                                    <div style='font-size: 12px; color: #666; margin-top: 5px;'>
+                                        Upload a CSV
+                                    </div>
                                     <input type='file' 
                                            class='setting-input' 
-                                           name='value'
-                                           style='width: 300px;'
+                                           name='value' 
+                                           placeholder='Enter Role Name'
+                                           style='width: 300px; padding: 5px;'
                                            required>
                                 </div>
                             """
@@ -174,11 +117,11 @@ properties([
 
 pipeline {
     agent any
-    
+  
     options {
         disableConcurrentBuilds()
     }
-    
+  
     stages {
         stage('Parameter Validation') {
             steps {
@@ -187,7 +130,7 @@ pipeline {
                         currentBuild.result = 'SUCCESS'
                         return
                     }
-                    
+                  
                     if (params.INPUT_TYPE == 'Manual') {
                         if (!params.ACCOUNT?.trim() || !params.ROLE?.trim()) {
                             error "Account and Role are required for Manual selection"
@@ -202,7 +145,7 @@ pipeline {
                 }
             }
         }
-        
+      
         stage('Run Python Script') {
             when {
                 expression { params.INPUT_TYPE != '' }
@@ -214,12 +157,12 @@ import os
 
 def main():
     input_type = os.environ.get('INPUT_TYPE')
-    
+  
     if input_type == 'Manual':
         account = os.environ.get('ACCOUNT')
         role = os.environ.get('ROLE')
         print(f"Running in Manual mode with Account: {account} and Role: {role}")
-        
+      
     elif input_type == 'File':
         file_path = os.environ.get('FILE_PATH')
         print(f"Running in File mode with file: {file_path}")
@@ -230,7 +173,7 @@ def main():
 if __name__ == "__main__":
     main()
 '''
-                    
+                  
                     withEnv([
                         "INPUT_TYPE=${params.INPUT_TYPE}",
                         "ACCOUNT=${params.ACCOUNT ?: ''}",
@@ -243,83 +186,4 @@ if __name__ == "__main__":
             }
         }
     }
-}
-    ]
-}
-
-properties([
-    parameters(getReactiveParams())
-])
-
-pipeline {
-    agent any
-    
-    options {
-        disableConcurrentBuilds()
-    }
-    
-    stages {
-        stage('Parameter Validation') {
-            steps {
-                script {
-                    if (!params.INPUT_TYPE) {
-                        currentBuild.result = 'SUCCESS'
-                        return
-                    }
-                    
-                    if (params.INPUT_TYPE == 'Manual') {
-                        if (!params.ACCOUNT?.trim() || !params.ROLE?.trim()) {
-                            error "Account and Role are required for Manual selection"
-                        }
-                        echo "Running in Manual mode with Account: ${params.ACCOUNT} and Role: ${params.ROLE}"
-                    } else if (params.INPUT_TYPE == 'File') {
-                        if (!params.INPUT_FILE) {
-                            error "File is required for File selection"
-                        }
-                        echo "Running in File mode with uploaded file"
-                    }
-                }
-            }
-        }
-        
-        stage('Run Python Script') {
-            when {
-                expression { params.INPUT_TYPE != '' }
-            }
-            steps {
-                script {
-                    writeFile file: 'script.py', text: '''
-import os
-
-def main():
-    input_type = os.environ.get('INPUT_TYPE')
-    
-    if input_type == 'Manual':
-        account = os.environ.get('ACCOUNT')
-        role = os.environ.get('ROLE')
-        print(f"Running in Manual mode with Account: {account} and Role: {role}")
-        
-    elif input_type == 'File':
-        file_path = os.environ.get('FILE_PATH')
-        print(f"Running in File mode with file: {file_path}")
-        with open(file_path, 'r') as file:
-            content = file.read()
-            print(f"File content: {content}")
-
-if __name__ == "__main__":
-    main()
-'''
-                    
-                    withEnv([
-                        "INPUT_TYPE=${params.INPUT_TYPE}",
-                        "ACCOUNT=${params.ACCOUNT ?: ''}",
-                        "ROLE=${params.ROLE ?: ''}",
-                        "FILE_PATH=${params.INPUT_FILE ?: ''}"
-                    ]) {
-                        sh 'python3 script.py'
-                    }
-                }
-            }
-        }
-    }
-}
+}"""
