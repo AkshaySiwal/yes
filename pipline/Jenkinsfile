@@ -6,59 +6,85 @@ def getReactiveParams() {
             choices: ['', 'File', 'Manual'],
             description: 'Select input type'
         ),
-        [$class: 'CascadeChoiceParameter', 
-            choiceType: 'PT_SINGLE_SELECT',
+        [$class: 'DynamicReferenceParameter',
+            choiceType: 'ET_FORMATTED_HTML',
             name: 'ACCOUNT',
             referencedParameters: 'INPUT_TYPE',
             script: [
                 $class: 'GroovyScript',
-                fallbackScript: [classpath: [], sandbox: true, script: 'return [""]'],
+                fallbackScript: [classpath: [], sandbox: true, script: 'return ""'],
                 script: [
                     classpath: [], 
                     sandbox: true,
                     script: '''
                         if (INPUT_TYPE == 'Manual') {
-                            return ['show']
+                            return """
+                                <div class='form-group'>
+                                    <input type='text' 
+                                           class='setting-input' 
+                                           name='value' 
+                                           placeholder='Enter Account ID'
+                                           style='width: 300px; padding: 5px;'
+                                           required>
+                                </div>
+                            """
                         }
-                        return ['hide']
+                        return ""
                     '''
                 ]
             ]
         ],
-        [$class: 'CascadeChoiceParameter', 
-            choiceType: 'PT_SINGLE_SELECT',
+        [$class: 'DynamicReferenceParameter',
+            choiceType: 'ET_FORMATTED_HTML',
             name: 'ROLE',
             referencedParameters: 'INPUT_TYPE',
             script: [
                 $class: 'GroovyScript',
-                fallbackScript: [classpath: [], sandbox: true, script: 'return [""]'],
+                fallbackScript: [classpath: [], sandbox: true, script: 'return ""'],
                 script: [
                     classpath: [], 
                     sandbox: true,
                     script: '''
                         if (INPUT_TYPE == 'Manual') {
-                            return ['show']
+                            return """
+                                <div class='form-group'>
+                                    <input type='text' 
+                                           class='setting-input' 
+                                           name='value' 
+                                           placeholder='Enter Role Name'
+                                           style='width: 300px; padding: 5px;'
+                                           required>
+                                </div>
+                            """
                         }
-                        return ['hide']
+                        return ""
                     '''
                 ]
             ]
         ],
-        [$class: 'CascadeChoiceParameter', 
-            choiceType: 'PT_SINGLE_SELECT',
+        [$class: 'DynamicReferenceParameter',
+            choiceType: 'ET_FORMATTED_HTML',
             name: 'INPUT_FILE',
             referencedParameters: 'INPUT_TYPE',
             script: [
                 $class: 'GroovyScript',
-                fallbackScript: [classpath: [], sandbox: true, script: 'return [""]'],
+                fallbackScript: [classpath: [], sandbox: true, script: 'return ""'],
                 script: [
                     classpath: [], 
                     sandbox: true,
                     script: '''
                         if (INPUT_TYPE == 'File') {
-                            return ['show']
+                            return """
+                                <div class='form-group'>
+                                    <input type='file' 
+                                           class='setting-input' 
+                                           name='value'
+                                           style='width: 300px;'
+                                           required>
+                                </div>
+                            """
                         }
-                        return ['hide']
+                        return ""
                     '''
                 ]
             ]
