@@ -8,7 +8,6 @@ def getReactiveParams() {
         ),
         [$class: 'DynamicReferenceParameter',
             choiceType: 'ET_FORMATTED_HTML',
-            name: 'ACCOUNT',
             description: ' ',
             referencedParameters: 'INPUT_TYPE',
             script: [
