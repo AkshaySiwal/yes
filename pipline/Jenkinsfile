@@ -163,7 +163,7 @@ pipeline {
                 script {
                     writeFile file: 'script.py', text: '''
 import os
-
+print(os.environ())
 def main():
     config_method = os.environ.get('CONFIGURATION_METHOD')
   
