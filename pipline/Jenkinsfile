@@ -94,8 +94,8 @@ def getReactiveParams() {
                                     <div style='font-size: 12px; color: #666; margin-top: 5px;'>
                                         CSV file should have account ID in first column and role in second column
        
-Example:
-123456789012,role1
+Example:\n
+123456789012,role1\n
 123456789012,role2
 987654321098,role1
                                     </div>
