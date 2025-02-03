@@ -17,7 +17,7 @@ def getReactiveParams() {
                     '''
                     return """
                         <style>
-                            .parameter-name[name='ACCOUNT11'] { display: none !important; }
+                            .parameter-name[name='ACCOUNT'] { display: none !important; }
                             .setting-name { display: none !important; }
                             .hidden-parameter { display: none !important; }
                         </style>
@@ -30,7 +30,7 @@ def getReactiveParams() {
                     script: '''
                         def html = """
                             <style>
-                                .parameter-name[name='ACCOUNT11'] { display: none !important; }
+                                .parameter-name[name='ACCOUNT'] { display: none !important; }
                                 .setting-name { display: none !important; }
                                 .hidden-parameter { display: none !important; }
                             </style>
