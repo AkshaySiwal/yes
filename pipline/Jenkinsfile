@@ -89,7 +89,7 @@ def getReactiveParams() {
                             return """
                                 <div class='form-group'>
                                     <label class='control-label' style='display: block; font-weight: bold; margin-bottom: 5px;'>
-                                        Role <span style='color: #FF0000;'>*</span>
+                                        File <span style='color: #FF0000;'>*</span>
                                     </label>
                                     <div style='font-size: 12px; color: #666; margin-top: 5px;'>
                                         Upload a CSV
@@ -97,7 +97,6 @@ def getReactiveParams() {
                                     <input type='file' 
                                            class='setting-input' 
                                            name='value' 
-                                           placeholder='Enter Role Name'
                                            style='width: 300px; padding: 5px;'
                                            required>
                                 </div>
