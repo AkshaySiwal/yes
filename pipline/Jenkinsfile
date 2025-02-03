@@ -9,7 +9,7 @@ def getReactiveParams() {
         [$class: 'DynamicReferenceParameter',
             choiceType: 'ET_FORMATTED_HTML',
             name: '',
-            referencedParameters: 'INPUT_TYPE',
+            referencedParameters: 'CONFIGURATION_METHOD',
             script: [
                 $class: 'GroovyScript',
                 fallbackScript: [classpath: [], sandbox: true, script: 'return ""'],
@@ -43,7 +43,7 @@ def getReactiveParams() {
         [$class: 'DynamicReferenceParameter',
             choiceType: 'ET_FORMATTED_HTML',
             name: '',
-            referencedParameters: 'INPUT_TYPE',
+            referencedParameters: 'CONFIGURATION_METHOD',
             script: [
                 $class: 'GroovyScript',
                 fallbackScript: [classpath: [], sandbox: true, script: 'return ""'],
@@ -77,7 +77,7 @@ def getReactiveParams() {
         [$class: 'DynamicReferenceParameter',
             choiceType: 'ET_FORMATTED_HTML',
             name: '',
-            referencedParameters: 'INPUT_TYPE',
+            referencedParameters: 'CONFIGURATION_METHOD',
             script: [
                 $class: 'GroovyScript',
                 fallbackScript: [classpath: [], sandbox: true, script: 'return ""'],
