@@ -8,17 +8,34 @@ def getReactiveParams() {
         ),
         [$class: 'DynamicReferenceParameter',
             choiceType: 'ET_FORMATTED_HTML',
-            name: '',
+            name: 'ACCOUNT',
             referencedParameters: 'CONFIGURATION_METHOD',
             script: [
                 $class: 'GroovyScript',
-                fallbackScript: [classpath: [], sandbox: true, script: 'return ""'],
+                fallbackScript: [classpath: [], sandbox: true, script: 
+            '''
+            return """
+                <style>
+                    [name='ACCOUNT'] .setting-name,
+                    [name='ACCOUNT'] .jenkins-form-label { 
+                        display: none !important; 
+                    }
+                </style>
+            """
+            '''
+        ],
                 script: [
                     classpath: [], 
                     sandbox: true,
                     script: '''
                         if (CONFIGURATION_METHOD == 'Manual Entry') {
                             return """
+                            <style>
+                            [name='ACCOUNT'] .setting-name,
+                            [name='ACCOUNT'] .jenkins-form-label { 
+                                display: none !important; 
+                            }
+                        </style>
                                 <div class='form-group'>
                                     <label class='control-label' style='display: block; font-weight: bold; margin-bottom: 5px;'>
                                         Account <span style='color: #FF0000;'>*</span>
