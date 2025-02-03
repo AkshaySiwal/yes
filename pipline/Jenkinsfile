@@ -9,7 +9,7 @@ def getReactiveParams() {
         [$class: 'DynamicReferenceParameter',
             choiceType: 'ET_FORMATTED_HTML',
             name: 'ACCOUNT11',
-            description: ' ',
+            description: 'eeeee e',
             referencedParameters: 'INPUT_TYPE',
             script: [
                 $class: 'GroovyScript',
