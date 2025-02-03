@@ -21,7 +21,7 @@ def getReactiveParams() {
                             return """
                                 <div class='form-group'>
                                     <label class='control-label' style='display: block; font-weight: bold; margin-bottom: 5px;'>
-                                        Account <span style='color: #FF0000;'>*</span>
+                                        Account1 <span style='color: #FF0000;'>*</span>
                                     </label>
                                     <div style='font-size: 12px; color: #666; margin-top: 5px;'>
                                         Enter the Account ID for manual configuration
