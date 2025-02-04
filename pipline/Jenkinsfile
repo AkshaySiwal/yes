@@ -7,29 +7,28 @@ def getReactiveParams() {
             description: 'Select how you want to provide Account and Role information'
         ),
 
-        [$class: 'DynamicReferenceParameter',
+         [$class: 'DynamicReferenceParameter',
     choiceType: 'ET_FORMATTED_HTML',
-    name: 'HIDDEN_ACCOUNT',  // This will be our hidden parameter name
+    name: 'ACCOUNT',  // You can use any name convention you prefer
     referencedParameters: 'CONFIGURATION_METHOD',
     script: [
         $class: 'GroovyScript',
-        fallbackScript: [classpath: [], sandbox: true, script: 
-            '''
-            return """
-                <div style='display: none;'></div>
-                <style>
-                    [name='HIDDEN_ACCOUNT'] { display: none !important; }
-                    [name='HIDDEN_ACCOUNT'] + div { display: none !important; }
-                </style>
-            """
-            '''
-        ],
+        fallbackScript: [classpath: [], sandbox: true, script: 'return ""'],
         script: [
             classpath: [], 
             sandbox: true,
             script: '''
+                def hideStyle = """
+                    <style>
+                        [name='ACCOUNT'] { position: absolute !important; opacity: 0 !important; height: 0 !important; }
+                        [name='ACCOUNT'] + * { display: none !important; }
+                        [name='ACCOUNT'] + div { display: none !important; }
+                        .setting-name, .setting-main { display: none !important; }
+                    </style>
+                """
+                
                 if (CONFIGURATION_METHOD == 'Manual Entry') {
-                    return """
+                    return hideStyle + """
                         <div class='form-group'>
                             <label class='control-label' style='display: block; font-weight: bold; margin-bottom: 5px;'>
                                 Account <span style='color: #FF0000;'>*</span>
@@ -44,19 +43,9 @@ def getReactiveParams() {
                                    style='width: 300px; padding: 5px;'
                                    required>
                         </div>
-                        <style>
-                            [name='HIDDEN_ACCOUNT'] { display: none !important; }
-                            [name='HIDDEN_ACCOUNT'] + div { display: none !important; }
-                        </style>
                     """
                 }
-                return """
-                    <div style='display: none;'></div>
-                    <style>
-                        [name='HIDDEN_ACCOUNT'] { display: none !important; }
-                        [name='HIDDEN_ACCOUNT'] + div { display: none !important; }
-                    </style>
-                """
+                return hideStyle
             '''
         ]
     ]
