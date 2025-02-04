@@ -59,7 +59,7 @@ def getReactiveParams() {
                                 </div>                                
                             """
                         }
-                        return ""
+                        return "NA"
                     '''
                 ]
             ]
@@ -102,7 +102,7 @@ def getReactiveParams() {
                                 </div>
                             """
                         }
-                        return ""
+                        return "NA"
                     '''
                 ]
             ]
@@ -129,14 +129,14 @@ pipeline {
                         currentBuild.result = 'SUCCESS'
                         return
                     }
-                    sh 'printenv | sort'  
+
                     if (params.CONFIGURATION_METHOD == 'Manual Entry') {
-                        if (!params.ACCOUNT?.trim() || !params.ROLE?.trim()) {
+                        if (!params.Account?.trim() || !params.Role?.trim()) {
                             error "Account and Role are required for Manual selection"
                         }
-                        echo "Running in Manual mode with Account: ${params.ACCOUNT} and Role: ${params.ROLE}"
+                        echo "Running in Manual mode with Account: ${params.Account} and Role: ${params.Role}"
                     } else if (params.CONFIGURATION_METHOD == 'Upload CSV File') {
-                        if (!params.INPUT_FILE) {
+                        if (!params.File) {
                             error "File is required for File selection"
                         }
                         echo "Running in File mode with uploaded file"
@@ -151,33 +151,11 @@ pipeline {
             }
             steps {
                 script {
-                    writeFile file: 'script.py', text: '''
-import os
-print(os.environ())
-def main():
-    config_method = os.environ.get('CONFIGURATION_METHOD')
-  
-    if config_method == 'Manual Entry':
-        account = os.environ.get('ACCOUNT')
-        role = os.environ.get('ROLE')
-        print(f"Running in Manual mode with Account: {account} and Role: {role}")
-      
-    elif config_method == 'Upload CSV File':
-        file_path = os.environ.get('FILE_PATH')
-        print(f"Running in File mode with file: {file_path}")
-        with open(file_path, 'r') as file:
-            content = file.read()
-            print(f"File content: {content}")
-
-if __name__ == "__main__":
-    main()
-'''
-                  
                     withEnv([
                         "CONFIGURATION_METHOD=${params.CONFIGURATION_METHOD}",
-                        "ACCOUNT=${params.ACCOUNT ?: ''}",
-                        "ROLE=${params.ROLE ?: ''}",
-                        "FILE_PATH=${params.INPUT_FILE ?: ''}"
+                        "Account=${params.Account ?: ''}",
+                        "Role=${params.Role ?: ''}",
+                        "File=${params.File ?: ''}"
                     ]) {
                         sh 'python3 script.py'
                     }
