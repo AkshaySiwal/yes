@@ -272,3 +272,97 @@ pipeline {
         ]
     ]
 ]
+
+
+
+
+====
+
+
+    def getReactiveParams() {
+    def params = [
+        choice(
+            name: 'TASK',
+            choices: ['Backup', 'Backup and Delete'],
+            description: 'Select the task to perform'
+        ),
+        choice(
+            name: 'CONFIGURATION_METHOD',
+            choices: ['', 'Upload CSV File', 'Manual Entry'],
+            description: 'Select how you want to provide Account and Role information'
+        )
+    ]
+
+    // Add Account and Role parameters for Manual Entry
+    params.add([$class: 'DynamicReferenceParameter',
+        choiceType: 'ET_FORMATTED_HTML',
+        name: 'Account',
+        referencedParameters: 'CONFIGURATION_METHOD',
+        script: [
+            $class: 'GroovyScript',
+            fallbackScript: [classpath: [], sandbox: true, script: 'return ""'],
+            script: [
+                classpath: [], 
+                sandbox: true,
+                script: '''
+                    if (CONFIGURATION_METHOD == 'Manual Entry') {
+                        return """
+                            <div class='form-group'>
+                                <input type='text' 
+                                       class='setting-input' 
+                                       name='value'
+                                       placeholder='Enter Account ID'
+                                       style='width: 300px; padding: 5px;'
+                                       required>
+                            </div>
+                        """
+                    }
+                    return "NA"
+                '''
+            ]
+        ]
+    ])
+
+    params.add([$class: 'DynamicReferenceParameter',
+        choiceType: 'ET_FORMATTED_HTML',
+        name: 'Role',
+        referencedParameters: 'CONFIGURATION_METHOD',
+        script: [
+            $class: 'GroovyScript',
+            fallbackScript: [classpath: [], sandbox: true, script: 'return ""'],
+            script: [
+                classpath: [], 
+                sandbox: true,
+                script: '''
+                    if (CONFIGURATION_METHOD == 'Manual Entry') {
+                        return """
+                            <div class='form-group'>
+                                <input type='text' 
+                                       class='setting-input' 
+                                       name='value' 
+                                       placeholder='Enter Role Name'
+                                       style='width: 300px; padding: 5px;'
+                                       required>
+                            </div>                                
+                        """
+                    }
+                    return "NA"
+                '''
+            ]
+        ]
+    ])
+
+    // Add File parameter for Upload CSV File
+    params.add([$class: 'FileParameterDefinition',
+        name: 'File',
+        description: '''Please upload a CSV file with the following format:
+- First column: AWS Account ID (12 digits)
+- Second column: IAM Role name
+
+Example:
+123456789012,role1
+123456789012,role2
+987654321098,role1'''])
+
+    return params
+}
