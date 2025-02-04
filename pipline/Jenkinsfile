@@ -12,7 +12,7 @@ def getReactiveParams() {
             referencedParameters: 'CONFIGURATION_METHOD',
             script: [
                 $class: 'GroovyScript',
-                fallbackScript: [classpath: [], sandbox: true, script: 'return ""'],
+                fallbackScript: [classpath: [], sandbox: true, script: 'return "NA"'],
                 script: [
                     classpath: [], 
                     sandbox: true,
