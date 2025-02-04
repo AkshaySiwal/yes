@@ -6,6 +6,11 @@ def getReactiveParams() {
             choices: ['', 'Upload CSV File', 'Manual Entry'],
             description: 'Select how you want to provide Account and Role information'
         ),
+        string(
+            name: 'HIDDEN_ACCOUNT',
+            defaultValue: '',
+            description: ''
+        ),
         [$class: 'DynamicReferenceParameter',
             choiceType: 'ET_FORMATTED_HTML',
             name: '',
@@ -28,7 +33,8 @@ def getReactiveParams() {
                                     </div>
                                     <input type='text' 
                                            class='setting-input' 
-                                           name='ACCOUNT_INPUT'
+                                           name='value'
+                                           onchange="document.getElementsByName('HIDDEN_ACCOUNT')[0].value = this.value"
                                            placeholder='Enter Account ID'
                                            style='width: 300px; padding: 5px;'
                                            required>
@@ -141,6 +147,8 @@ pipeline {
                     }
                     sh 'printenv | sort'  
                     if (params.CONFIGURATION_METHOD == 'Manual Entry') {
+                        def accountValue = params.HIDDEN_ACCOUNT
+                        echo "Account value: ${accountValue}"
                         if (!params.ACCOUNT?.trim() || !params.ROLE?.trim()) {
                             error "Account and Role are required for Manual selection"
                         }
