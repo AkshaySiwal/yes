@@ -195,3 +195,80 @@ pipeline {
         }
     }
 }
+
+
+---
+
+
+
+[$class: 'FileParameter',
+    name: 'File',
+    description: 'Upload CSV file containing Account IDs and Role names'
+],
+[$class: 'DynamicReferenceParameter',
+    choiceType: 'ET_FORMATTED_HTML',
+    name: 'FILE_INSTRUCTIONS',
+    referencedParameters: 'CONFIGURATION_METHOD',
+    script: [
+        $class: 'GroovyScript',
+        fallbackScript: [classpath: [], sandbox: true, script: 'return ""'],
+        script: [
+            classpath: [], 
+            sandbox: true,
+            script: '''
+                if (CONFIGURATION_METHOD == 'Upload CSV File') {
+                    return """
+                        <div class='form-group'>
+                            <label class='control-label' style='display: block; font-weight: bold; margin-bottom: 5px;'>
+                                CSV File Format <span style='color: #FF0000;'>*</span>
+                            </label>
+                            <div style='font-size: 12px; color: #666; margin-top: 5px;'>
+                                <ul style='margin-top: 5px; margin-bottom: 10px;'>
+                                    <li>First column: AWS Account ID (12 digits)</li>
+                                    <li>Second column: IAM Role name</li>
+                                </ul>
+                                Example:
+                                <pre style='background: #f5f5f5; padding: 8px; margin-top: 5px; border-radius: 4px;'>
+123456789012,role1
+123456789012,role2
+987654321098,role1</pre>
+                            </div>
+                            <script>
+                                (function() {
+                                    try {
+                                        var fileInput = document.querySelector('input[name="File"]');
+                                        if (fileInput && fileInput.parentElement) {
+                                            fileInput.parentElement.style.display = 'block';
+                                            fileInput.setAttribute('accept', '.csv');
+                                            fileInput.style.width = '100%';
+                                            fileInput.style.maxWidth = '400px';
+                                            fileInput.style.padding = '8px';
+                                            fileInput.style.border = '1px solid #ccc';
+                                            fileInput.style.borderRadius = '4px';
+                                        }
+                                    } catch (e) {
+                                        console.error('Error configuring file input:', e);
+                                    }
+                                })();
+                            </script>
+                        </div>
+                    """
+                }
+                return """
+                    <script>
+                        (function() {
+                            try {
+                                var fileInput = document.querySelector('input[name="File"]');
+                                if (fileInput && fileInput.parentElement) {
+                                    fileInput.parentElement.style.display = 'none';
+                                }
+                            } catch (e) {
+                                console.error('Error hiding file input:', e);
+                            }
+                        })();
+                    </script>
+                """
+            '''
+        ]
+    ]
+]
