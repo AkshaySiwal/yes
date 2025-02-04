@@ -1,0 +1,59 @@
+#!/bin/bash
+
+role=WizAccess-Role
+role=cloud_management_terraform-ec2-role-v2
+PROFILE=default
+
+
+# Get role details in a single API call (reduces API calls and gets both dates)
+role_details=$(aws --profile "$PROFILE" iam get-role --role-name $role)
+role_last_used=$(echo "$role_details" | jq -r '.Role.RoleLastUsed.LastUsedDate')
+role_creation_date=$(echo "$role_details" | jq -r '.Role.CreateDate')
+
+current_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+is_old_unused_role=false
+
+echo "Analyzing role: $role"
+echo "Role creation date: $role_creation_date"
+echo "Role last used date: $role_last_used"
+
+# First check if role is older than 180 days
+days_since_creation=$(( ( $(date -d "$current_date" +%s) - $(date -d "$role_creation_date" +%s) ) / (60*60*24) ))
+echo "Days since creation: $days_since_creation"
+
+if [[ $days_since_creation -le 180 ]]
+then
+    echo "Role is less than 180 days old. Skipping..."
+    echo "================================================================="
+else
+    # Now check last usage
+    if [[ $role_last_used == "null" || $role_last_used == "None" ]]
+    then
+        echo "Role has never been used and is older than 180 days"
+        is_old_unused_role=true
+    else
+        days_since_last_use=$(( ( $(date -d "$current_date" +%s) - $(date -d "$role_last_used" +%s) ) / (60*60*24) ))
+        echo "Days since last use: $days_since_last_use"
+        
+        if [[ $days_since_last_use -gt 180 ]]
+        then
+            echo "Role has not been used in last 180 days"
+            is_old_unused_role=true
+        else
+            echo "Role was used within last 180 days. Skipping..."
+        fi
+    fi
+    
+    if [[ "$is_old_unused_role" == true ]]
+    then
+        echo "ALERT: Role $role qualifies for cleanup:"
+        echo "  - Created: $days_since_creation days ago"
+        if [[ $role_last_used != "null" && $role_last_used != "None" ]]
+        then
+            echo "  - Last used: $days_since_last_use days ago"
+        else
+            echo "  - Never used since creation"
+        fi
+        echo "================================================================="
+    fi
+fi
