@@ -125,11 +125,35 @@ def get_trail_event_selectors(slave_session, result):
             for trail in trails:
                 try:
                     try:
+                        cia_team_trail = 'No'
+                        trail_role_tag_value = 'Not Found'
+                        tags_response = slave_cloudtrail.list_tags(ResourceIdList=[trail['trail_arn']])
+                        tags = {}
+                        for resource in tags_response.get('ResourceTagList', []):
+                            if resource['ResourceId'] == trail['trail_arn']:
+                                for tag in resource.get('TagsList', []):
+                                    tags[tag['Key']] = tag['Value']
+                                    if tag['Key'].lower() == 'role':
+                                        trail_role_tag_value = tag['Value']
+                                        if 'cia' in tag['Value'].lower():
+                                            cia_team_trail = 'Yes'
+
+                        if trail_role_tag_value == 'Not Found':
+                            cia_team_trail = 'Yes'
+                    except Exception as e:
+                        print(f"ERROR: Listing tags for trail {trail['trail_arn']} failed: {e}")
+                        trail['comments'] = 'Error finding tags'
+                    
+                    trail['trail_role_tag_value'] = trail_role_tag_value
+                    trail['cia_team_trail'] = cia_team_trail
+                    trail['trail_tags'] = tags
+
+                    try:
                         status = slave_cloudtrail.get_trail_status(Name=trail['trail_arn'])
                         trail_status = status.get('IsLogging', 'Error')
                     except Exception as e:
                         print(f"ERROR: Unable to get trail status for {trail['trail_name']}: {str(e)}")
-                        trail_status = 'Error'
+                        trail['comments'] = 'Error finding trail status'
                     selectors = slave_cloudtrail.get_event_selectors(TrailName=trail['trail_name'])
 
                     has_management_events = False
@@ -249,11 +273,13 @@ def trails_to_csv(trails_data, output_file='trails.csv'):
                 fields.update(trail.keys())
 
     # Remove fields that will be handled separately to avoid duplicates
-    fields = fields - {'trail_name', 'trail_status', 'trail_s3_bucket', 'has_data_events', 'data_events_read_write', 'has_management_events', 'management_events_read_write', 'has_insight_selector', 'is_multi_region', 'is_organization_trail'}
+    fields = fields - {'trail_name', 'trail_status', 'cia_team_trail', 'trail_role_tag_value', 'trail_s3_bucket', 'has_data_events', 'data_events_read_write', 'has_management_events', 'management_events_read_write', 'has_insight_selector', 'is_multi_region', 'is_organization_trail', 'trail_tags', 'comments'}
 
     # Define column order with unique columns
-    base_columns = ['account', 'trail_name', 'trail_status', 'region', 'trail_s3_bucket', 'has_data_events', 'data_events_read_write', 'has_management_events', 'management_events_read_write', 'has_insight_selector', 'is_multi_region', 'is_organization_trail']
+    base_columns = ['account', 'trail_name', 'trail_status', 'region', 'cia_team_trail', 'trail_role_tag_value', 'trail_s3_bucket', 'has_data_events', 'data_events_read_write', 'has_management_events', 'management_events_read_write', 'has_insight_selector', 'is_multi_region', 'is_organization_trail']
     remaining_columns = sorted(list(fields))
+    remaining_columns.append('trail_tags')
+    remaining_columns.append('comments')
 
     # Create final headers list with no duplicates
     headers = []
