@@ -39,6 +39,9 @@ def getReactiveParams() {
                                            style='width: 300px; padding: 5px;'
                                            required>
                                 </div>
+                                <style>
+                                    [name='HIDDEN_ACCOUNT'] { display: none !important; }
+                                </style>
                             """
                         }
                         return ""
