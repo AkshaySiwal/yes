@@ -1,0 +1,12 @@
+Cloud Trail data for remaining AWS accounts (~90) is here:
+
+Found:
+- 80 CloudTrails without 'role' tags
+- Most are duplicate multi-region non-org management trails (chargeable)
+- Few untagged data event trails
+
+Cost Impact:
+- Management Events: $2.00 per 100K events (after first free trail)
+- Data Events: $0.10 per 100K events (high volume)
+
+Analyzing event volumes to estimate potential cost savings.
