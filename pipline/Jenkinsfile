@@ -6,6 +6,11 @@ def getReactiveParams() {
             choices: ['', 'Upload CSV File', 'Manual Entry'],
             description: 'Select how you want to provide Account and Role information'
         ),
+        choice(
+            name: 'TASK',
+            choices: ['Backup', 'Backup and Delete'],
+            description: 'Select the task to perform'
+        ),
         [$class: 'DynamicReferenceParameter',
             choiceType: 'ET_FORMATTED_HTML',
             name: 'Account',
@@ -20,7 +25,6 @@ def getReactiveParams() {
                         if (CONFIGURATION_METHOD == 'Manual Entry') {
                             return """
                                 <div class='form-group'>
-                                    
                                     <input type='text' 
                                            class='setting-input' 
                                            name='value'
@@ -49,7 +53,6 @@ def getReactiveParams() {
                         if (CONFIGURATION_METHOD == 'Manual Entry') {
                             return """
                                 <div class='form-group'>
-                                    
                                     <input type='text' 
                                            class='setting-input' 
                                            name='value' 
@@ -130,16 +133,30 @@ pipeline {
                         return
                     }
 
+                    // Map for task values
+                    def taskMap = [
+                        'Backup': 'backup',
+                        'Backup and Delete': 'delete'
+                    ]
+                    
+                    // Get the task value from the map
+                    def taskValue = taskMap[params.TASK]
+                    if (!taskValue) {
+                        error "Invalid task selected"
+                    }
+
                     if (params.CONFIGURATION_METHOD == 'Manual Entry') {
                         if (!params.Account?.trim() || !params.Role?.trim()) {
                             error "Account and Role are required for Manual selection"
                         }
                         echo "Running in Manual mode with Account: ${params.Account} and Role: ${params.Role}"
+                        echo "Selected task: ${params.TASK} (${taskValue})"
                     } else if (params.CONFIGURATION_METHOD == 'Upload CSV File') {
                         if (!params.File) {
                             error "File is required for File selection"
                         }
                         echo "Running in File mode with uploaded file"
+                        echo "Selected task: ${params.TASK} (${taskValue})"
                     }
                 }
             }
@@ -151,11 +168,17 @@ pipeline {
             }
             steps {
                 script {
+                    def taskMap = [
+                        'Backup': 'backup',
+                        'Backup and Delete': 'delete'
+                    ]
+                    
                     withEnv([
                         "CONFIGURATION_METHOD=${params.CONFIGURATION_METHOD}",
                         "Account=${params.Account ?: ''}",
                         "Role=${params.Role ?: ''}",
-                        "File=${params.File ?: ''}"
+                        "File=${params.File ?: ''}",
+                        "TASK=${taskMap[params.TASK]}"
                     ]) {
                         sh 'python3 script.py'
                     }
