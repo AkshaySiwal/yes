@@ -1,61 +1,16 @@
-// Jenkinsfile
-def getReactiveParams() {
-    return [
+pipeline {
+    agent any
+    
+    parameters {
         choice(
             name: 'CONFIGURATION_METHOD',
-            choices: ['', 'Upload CSV File', 'Manual Entry'],
-            description: 'Select how you want to provide Account and Role information'
-        ),
-
-         [$class: 'DynamicReferenceParameter',
-    choiceType: 'ET_FORMATTED_HTML',
-    name: 'ACCOUNT',  // You can use any name convention you prefer
-    referencedParameters: 'CONFIGURATION_METHOD',
-    script: [
-        $class: 'GroovyScript',
-        fallbackScript: [classpath: [], sandbox: true, script: 'return ""'],
-        script: [
-            classpath: [], 
-            sandbox: true,
-            script: '''
-                def hideStyle = """
-                    <style>
-                        [name='ACCOUNT'] { position: absolute !important; opacity: 0 !important; height: 0 !important; }
-                        [name='ACCOUNT'] + * { display: none !important; }
-                        [name='ACCOUNT'] + div { display: none !important; }
-                        .setting-name, .setting-main { display: none !important; }
-                    </style>
-                """
-                
-                if (CONFIGURATION_METHOD == 'Manual Entry') {
-                    return hideStyle + """
-                        <div class='form-group'>
-                            <label class='control-label' style='display: block; font-weight: bold; margin-bottom: 5px;'>
-                                Account <span style='color: #FF0000;'>*</span>
-                            </label>
-                            <div style='font-size: 12px; color: #666; margin-top: 5px;'>
-                                Enter the Account ID for manual configuration
-                            </div>
-                            <input type='text' 
-                                   class='setting-input' 
-                                   name='value'
-                                   placeholder='Enter Account ID'
-                                   style='width: 300px; padding: 5px;'
-                                   required>
-                        </div>
-                    """
-                }
-                return hideStyle
-            '''
-        ]
-    ]
-],
-
-
+            choices: ['Select Configuration Method', 'File Upload', 'Manual Entry'],
+            description: 'Select how you want to provide the configuration'
+        )
         
         [$class: 'DynamicReferenceParameter',
             choiceType: 'ET_FORMATTED_HTML',
-            name: '',
+            name: 'FILE_UPLOAD',
             referencedParameters: 'CONFIGURATION_METHOD',
             script: [
                 $class: 'GroovyScript',
@@ -64,150 +19,214 @@ def getReactiveParams() {
                     classpath: [], 
                     sandbox: true,
                     script: '''
-                        if (CONFIGURATION_METHOD == 'Manual Entry') {
-                            return """
-                                <div class='form-group'>
+                        def hideStyles = """
+                            <style>
+                                [name='FILE_UPLOAD'] { position: absolute !important; opacity: 0 !important; }
+                                [name='FILE_UPLOAD'] + * { display: none !important; }
+                                .setting-name, .setting-main { display: none !important; }
+                            </style>
+                        """
+                        
+                        if (CONFIGURATION_METHOD == 'File Upload') {
+                            return hideStyles + """
+                                <div class='form-group' style='margin-left: -180px;'>
                                     <label class='control-label' style='display: block; font-weight: bold; margin-bottom: 5px;'>
-                                        Role <span style='color: #FF0000;'>*</span>
+                                        Configuration File <span style='color: #FF0000;'>*</span>
                                     </label>
-                                    <div style='font-size: 12px; color: #666; margin-top: 5px;'>
-                                        Enter the Role Name for manual configuration
-                                    </div>
-                                    <input type='text' 
-                                           class='setting-input' 
-                                           name='vvalue' 
-                                           placeholder='Enter Role Name'
-                                           style='width: 300px; padding: 5px;'
-                                           required>
-                                </div>                                
-                            """
-                        }
-                        return ""
-                    '''
-                ]
-            ]
-        ],
-        [$class: 'DynamicReferenceParameter',
-            choiceType: 'ET_FORMATTED_HTML',
-            name: '',
-            referencedParameters: 'CONFIGURATION_METHOD',
-            script: [
-                $class: 'GroovyScript',
-                fallbackScript: [classpath: [], sandbox: true, script: 'return ""'],
-                script: [
-                    classpath: [], 
-                    sandbox: true,
-                    script: '''
-                        if (CONFIGURATION_METHOD == 'Upload CSV File') {
-                            return """
-                                <div class='form-group'>
-                                    <label class='control-label' style='display: block; font-weight: bold; margin-bottom: 5px;'>
-                                        Upload CSV File <span style='color: #FF0000;'>*</span>
-                                    </label>
-                                    <div style='font-size: 12px; color: #666; margin-top: 5px;'>
-                                        Please upload a CSV file with the following format:
-                                        <ul style='margin-top: 5px; margin-bottom: 10px;'>
-                                            <li>First column: AWS Account ID (12 digits)</li>
-                                            <li>Second column: IAM Role name</li>
-                                        </ul>
-                                        Example:
-                                        <pre style='background: #f5f5f5; padding: 8px; margin-top: 5px; border-radius: 4px;'>
-123456789012,role1
-123456789012,role2
-987654321098,role1</pre>
+                                    <div style='font-size: 12px; color: #666; margin-bottom: 10px;'>
+                                        Upload CSV file with format:<br>
+                                        Account,Role<br>
+                                        123456789,Admin<br>
+                                        987654321,User
                                     </div>
                                     <input type='file' 
-                                           class='setting-input' 
+                                           class='setting-input'
                                            name='value'
                                            accept='.csv'
-                                           style='width: 100%; max-width: 400px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;'
+                                           style='width: 300px;'
                                            required>
                                 </div>
                             """
                         }
-                        return ""
+                        return hideStyles
+                    '''
+                ]
+            ]
+        ],
+        
+        [$class: 'DynamicReferenceParameter',
+            choiceType: 'ET_FORMATTED_HTML',
+            name: 'HIDDEN_ACCOUNT',
+            referencedParameters: 'CONFIGURATION_METHOD',
+            script: [
+                $class: 'GroovyScript',
+                fallbackScript: [classpath: [], sandbox: true, script: 'return ""'],
+                script: [
+                    classpath: [], 
+                    sandbox: true,
+                    script: '''
+                        def hideStyles = """
+                            <style>
+                                [name='HIDDEN_ACCOUNT'] { position: absolute !important; opacity: 0 !important; }
+                                [name='HIDDEN_ACCOUNT'] + * { display: none !important; }
+                                .setting-name, .setting-main { display: none !important; }
+                            </style>
+                        """
+                        
+                        if (CONFIGURATION_METHOD == 'Manual Entry') {
+                            return hideStyles + """
+                                <div class='form-group' style='margin-left: -180px;'>
+                                    <label class='control-label' style='display: block; font-weight: bold; margin-bottom: 5px;'>
+                                        Account <span style='color: #FF0000;'>*</span>
+                                    </label>
+                                    <div style='font-size: 12px; color: #666; margin-bottom: 10px;'>
+                                        Enter the AWS Account ID (12 digits)
+                                    </div>
+                                    <input type='text' 
+                                           class='setting-input' 
+                                           name='value'
+                                           pattern='[0-9]{12}'
+                                           placeholder='123456789012'
+                                           style='width: 300px;'
+                                           required>
+                                </div>
+                            """
+                        }
+                        return hideStyles
+                    '''
+                ]
+            ]
+        ],
+        
+        [$class: 'DynamicReferenceParameter',
+            choiceType: 'ET_FORMATTED_HTML',
+            name: 'HIDDEN_ROLE',
+            referencedParameters: 'CONFIGURATION_METHOD',
+            script: [
+                $class: 'GroovyScript',
+                fallbackScript: [classpath: [], sandbox: true, script: 'return ""'],
+                script: [
+                    classpath: [], 
+                    sandbox: true,
+                    script: '''
+                        def hideStyles = """
+                            <style>
+                                [name='HIDDEN_ROLE'] { position: absolute !important; opacity: 0 !important; }
+                                [name='HIDDEN_ROLE'] + * { display: none !important; }
+                                .setting-name, .setting-main { display: none !important; }
+                            </style>
+                        """
+                        
+                        if (CONFIGURATION_METHOD == 'Manual Entry') {
+                            return hideStyles + """
+                                <div class='form-group' style='margin-left: -180px;'>
+                                    <label class='control-label' style='display: block; font-weight: bold; margin-bottom: 5px;'>
+                                        Role <span style='color: #FF0000;'>*</span>
+                                    </label>
+                                    <div style='font-size: 12px; color: #666; margin-bottom: 10px;'>
+                                        Enter the IAM Role name
+                                    </div>
+                                    <input type='text' 
+                                           class='setting-input' 
+                                           name='value'
+                                           placeholder='AdminRole'
+                                           style='width: 300px;'
+                                           required>
+                                </div>
+                            """
+                        }
+                        return hideStyles
                     '''
                 ]
             ]
         ]
-    ]
-}
-
-properties([
-    parameters(getReactiveParams())
-])
-
-pipeline {
-    agent any
-  
-    options {
-        disableConcurrentBuilds()
     }
-  
+
     stages {
-        stage('Parameter Validation') {
+        stage('Validate Parameters') {
             steps {
                 script {
-                    if (!params.CONFIGURATION_METHOD) {
-                        currentBuild.result = 'SUCCESS'
-                        return
+                    // Validate configuration method selection
+                    if (params.CONFIGURATION_METHOD == 'Select Configuration Method') {
+                        error "Please select a valid configuration method"
                     }
-                    sh 'printenv | sort'  
+                    
+                    // Store configuration method for later use
+                    env.CONFIG_METHOD = params.CONFIGURATION_METHOD
+                    
                     if (params.CONFIGURATION_METHOD == 'Manual Entry') {
+                        // Validate manual entry parameters
                         def accountValue = params.HIDDEN_ACCOUNT
-                        echo "Account value: ${accountValue}"
-                        if (!params.ACCOUNT?.trim() || !params.ROLE?.trim()) {
-                            error "Account and Role are required for Manual selection"
+                        def roleValue = params.HIDDEN_ROLE
+                        
+                        if (!accountValue?.trim()) {
+                            error "Account ID is required for Manual Entry"
                         }
-                        echo "Running in Manual mode with Account: ${params.ACCOUNT} and Role: ${params.ROLE}"
-                    } else if (params.CONFIGURATION_METHOD == 'Upload CSV File') {
-                        if (!params.INPUT_FILE) {
-                            error "File is required for File selection"
+                        if (!accountValue.matches(/^\d{12}$/)) {
+                            error "Invalid Account ID format. Must be 12 digits."
                         }
-                        echo "Running in File mode with uploaded file"
+                        if (!roleValue?.trim()) {
+                            error "Role is required for Manual Entry"
+                        }
+                        
+                        // Store validated values
+                        env.ACCOUNT_ID = accountValue
+                        env.ROLE_NAME = roleValue
+                        
+                        echo "Manual Entry - Account: ${env.ACCOUNT_ID}, Role: ${env.ROLE_NAME}"
+                    }
+                    else if (params.CONFIGURATION_METHOD == 'File Upload') {
+                        // Validate file upload
+                        def fileContent = params.FILE_UPLOAD
+                        if (!fileContent?.trim()) {
+                            error "Configuration file is required for File Upload"
+                        }
+                        
+                        // Store file content
+                        env.CONFIG_FILE = fileContent
+                        echo "File Upload - Processing configuration file"
                     }
                 }
             }
         }
-      
-        stage('Run Python Script') {
-            when {
-                expression { params.CONFIGURATION_METHOD != '' }
-            }
+        
+        stage('Process Configuration') {
             steps {
                 script {
-                    writeFile file: 'script.py', text: '''
-import os
-print(os.environ())
-def main():
-    config_method = os.environ.get('CONFIGURATION_METHOD')
-  
-    if config_method == 'Manual Entry':
-        account = os.environ.get('ACCOUNT')
-        role = os.environ.get('ROLE')
-        print(f"Running in Manual mode with Account: {account} and Role: {role}")
-      
-    elif config_method == 'Upload CSV File':
-        file_path = os.environ.get('FILE_PATH')
-        print(f"Running in File mode with file: {file_path}")
-        with open(file_path, 'r') as file:
-            content = file.read()
-            print(f"File content: {content}")
-
-if __name__ == "__main__":
-    main()
-'''
-                  
-                    withEnv([
-                        "CONFIGURATION_METHOD=${params.CONFIGURATION_METHOD}",
-                        "ACCOUNT=${params.ACCOUNT ?: ''}",
-                        "ROLE=${params.ROLE ?: ''}",
-                        "FILE_PATH=${params.INPUT_FILE ?: ''}"
-                    ]) {
-                        sh 'python3 script.py'
+                    if (env.CONFIG_METHOD == 'Manual Entry') {
+                        // Process manual entry
+                        echo "Processing manual configuration..."
+                        // Add your processing logic here
+                    }
+                    else if (env.CONFIG_METHOD == 'File Upload') {
+                        // Process file
+                        echo "Processing configuration file..."
+                        // Add your file processing logic here
                     }
                 }
             }
+        }
+        
+        stage('Execute Tasks') {
+            steps {
+                script {
+                    echo "Executing tasks with configuration..."
+                    // Add your main execution logic here
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo "Pipeline completed successfully"
+        }
+        failure {
+            echo "Pipeline failed"
+        }
+        always {
+            // Cleanup if needed
+            cleanWs()
         }
     }
 }
