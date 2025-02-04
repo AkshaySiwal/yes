@@ -476,6 +476,128 @@ def get_role_details(delete_role_name, slave_session, role_deletion_threshold_da
 
 
 
+def write_json_to_file(json_data, slave_account_id, delete_role_name, workspace):
+    if not all([json_data, slave_account_id, delete_role_name, workspace]):
+        print("ERROR: All parameters (json_data, slave_account_id, delete_role_name, workspace) are required")
+        return None
+        
+    try:
+        # Create a timestamp for the filename
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        
+        # Create account specific directory path
+        account_dir = os.path.join(workspace, slave_account_id, 'json')  # Fixed 'json' string
+        
+        # Sanitize filename components
+        # Sanitize account ID and role name to ensure safe filename creation
+        safe_account_id = re.sub(r'[^a-zA-Z0-9_-]', '_', str(slave_account_id))
+        safe_role_name = re.sub(r'[^a-zA-Z0-9_-]', '_', str(delete_role_name))
+        
+        # Create directories if they don't exist
+        try:
+            os.makedirs(account_dir, exist_ok=True)
+        except PermissionError as pe:
+            print(f"ERROR: Permission denied while creating directory {account_dir}: {str(pe)}")
+            return None
+        
+        # Create filename with account, role and timestamp
+        filename = f"role_backup_{safe_account_id}_{safe_role_name}_{timestamp}.json"
+        
+        # Create full file path
+        file_path = os.path.join(account_dir, filename)
+        
+        # Write JSON to file
+        with open(file_path, 'w') as f:
+            json.dump(json_data, f, indent=4, sort_keys=True, default=str)
+            
+        print(f"INFO: Successfully wrote role {delete_role_name} of account {slave_account_id} details to {file_path}")
+        return file_path
+    except IOError as io_err:
+        print(f"ERROR: IO error while writing file for role {delete_role_name} of account {slave_account_id}: {str(io_err)}")
+        return None
+    except Exception as e:
+        print(f"ERROR: Failed to write JSON to file for role {delete_role_name} of account {slave_account_id}: {str(e)}")
+        return None
+
+def zip_account_json_files(workspace, slave_account_id):
+    if not workspace or not slave_account_id:
+        print("ERROR: workspace and slave_account_id are required parameters")
+        return None
+
+    try:
+        # Define paths
+        account_dir = os.path.join(workspace, slave_account_id)
+        json_dir = os.path.join(account_dir, 'json')
+        zip_filename = f"role_backups_{slave_account_id}.zip"
+        zip_path = os.path.join(account_dir, zip_filename)
+        
+        # Validate workspace and account directory
+        if not os.path.exists(workspace):
+            print(f"ERROR: Workspace directory does not exist: {workspace}, while working on {slave_account_id}")
+            return None
+            
+        if not os.path.exists(account_dir):
+            print(f"ERROR: Account directory does not exist: {account_dir}, while working on {slave_account_id}")
+            return None
+
+        # Check if JSON directory exists and has files
+        if not os.path.exists(json_dir):
+            print(f"WARNING: No JSON directory found for account {slave_account_id}")
+            return None
+            
+        try:
+            json_files = [f for f in os.listdir(json_dir) if f.endswith('.json')]
+        except OSError as e:
+            print(f"ERROR: Failed to list JSON directory contents while working on {slave_account_id}: {str(e)}")
+            return None
+            
+        if not json_files:
+            print(f"WARNING: No JSON files found for account {slave_account_id}")
+            return None
+            
+        # Create zip file
+        try:
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for json_file in json_files:
+                    file_path = os.path.join(json_dir, json_file)
+                    # Verify file exists and is readable
+                    if not os.path.isfile(file_path):
+                        print(f"WARNING: File not found or not accessible: {file_path}")
+                        continue
+                    try:
+                        arcname = os.path.join('json', json_file)  # Preserve directory structure in zip
+                        zipf.write(file_path, arcname)
+                    except (OSError, zipfile.BadZipFile) as e:
+                        print(f"ERROR: Failed to add file to zip: {file_path}: {str(e)}")
+                        continue
+        except (OSError, zipfile.BadZipFile) as e:
+            print(f"ERROR: Failed to create zip file: {str(e)}")
+            # Clean up partial zip file if it exists
+            if os.path.exists(zip_path):
+                try:
+                    os.remove(zip_path)
+                except OSError:
+                    pass
+            return None
+                
+        # Verify the zip file was created successfully
+        if not os.path.exists(zip_path):
+            print(f"ERROR: Zip file was not created at {zip_path}")
+            return None
+            
+        print(f"INFO: Successfully created zip file for account {slave_account_id} at {zip_path}")
+        return zip_path
+        
+    except Exception as e:
+        print(f"ERROR: Unexpected error while creating zip file for account {slave_account_id}: {str(e)}")
+        # Clean up partial zip file if it exists
+        if os.path.exists(zip_path):
+            try:
+                os.remove(zip_path)
+            except OSError:
+                pass
+        return None
+
 def upload_file_s3(bucket_name, file_name, file_content, max_retries = 3):
     for attempt in range(max_retries):
         try:
@@ -763,6 +885,7 @@ if __name__ == '__main__':
     slave_role_name = "cloud_management_terraform-ec2-role-v2"
     session_name = f"CIA-Terraform-Pipeline--PR-CHECK--{build_number}"
     role_deletion_threshold_days = 25
+    task = read_parameter('Task', 'backup')
     
     
     if account_id.lower() == 'all':
@@ -805,26 +928,73 @@ if __name__ == '__main__':
                         if not delete_role_details:
                             print(f"INFO: Skipping deletion for Account {slave_account_id} Role {delete_role_name} due to missing details or threshold not met.")
                             continue
-                        json_output = json.dumps(delete_role_details, indent=3, sort_keys=True, ensure_ascii=False, default=str)
-                        print(json_output)
-                        try:
-                            deletion_success = delete_role_safely(delete_role_name = delete_role_name, delete_role_details=delete_role_details, 
-                                                               slave_session=slave_session,
-                                                               role_deletion_threshold_days=role_deletion_threshold_days,
-                                                               slave_account_id=slave_account_id)
-                            if deletion_success:
-                                print(f"SUCCESS: Role {delete_role_name} in account {slave_account_id} deleted successfully.")
-                                json_output = json.dumps(delete_role_details, indent=3, sort_keys=True, ensure_ascii=False, default=str)
-                            else:
-                                print(f"ERROR: Failed to delete role {delete_role_name} in account {slave_account_id}.")
+                        else:
+                            print(f"SUCCESS: Role {delete_role_name} in account {slave_account_id} read successfully.")
+                            json_output = json.dumps(delete_role_details, indent=3, sort_keys=True, ensure_ascii=False, default=str)
                                 
+                            # Write the JSON output to a file
+                            backup_file = write_json_to_file(
+                                    json_data=delete_role_details,
+                                    slave_account_id=slave_account_id,
+                                    delete_role_name=delete_role_name,
+                                    workspace=workspace
+                            )
+                            if not backup_file:
+                                print(f"ERROR: Failed to backup role {delete_role_name} in account {slave_account_id}. Skipping Deletion for safety.....")
+                                continue
+                                
+                            print(f"INFO: Role backup for role {delete_role_name} in account {slave_account_id} is saved to {backup_file}")
+                            
+                            # Verify backup file exists and is not empty
+                            if not os.path.exists(backup_file) or os.path.getsize(backup_file) == 0:
+                                print(f"ERROR: Backup file verification failed for role {delete_role_name} in account {slave_account_id}. Skipping Deletion for safety.....")
+                                continue
+                                
+                            try:
+                                # Verify backup file contains valid JSON
+                                with open(backup_file, 'r') as f:
+                                    backup_content = json.load(f)
+                                if not backup_content:
+                                    print(f"ERROR: Backup file is empty or invalid for role {delete_role_name} in account {slave_account_id}. Skipping Deletion for safety.....")
+                                    continue
 
-                            print('------------------------------------')
-                            print('------------------------------------')
-                            
-                        except Exception as e:
-                            print(f"ERROR: Failed to delete role {delete_role_name} safely for account {slave_account_id}: {str(e)}")
-                            
+                                # Upload backup to S3 before deletion
+                                s3_bucket = "your-backup-bucket-name"  # Replace with your S3 bucket name
+                                s3_key = f"role_backups/{slave_account_id}/{os.path.basename(backup_file)}"
+                                
+                                try:
+                                    with open(backup_file, 'rb') as f:
+                                        s3_upload_success = upload_file_s3(
+                                            bucket_name=s3_bucket,
+                                            file_name=s3_key,
+                                            file_content=f.read()
+                                        )
+                                    
+                                    if not s3_upload_success:
+                                        print(f"ERROR: Failed to upload backup to S3 for role {delete_role_name} in account {slave_account_id}. Skipping deletion for safety...")
+                                        continue
+                                        
+                                    print(f"SUCCESS: Role backup uploaded to s3://{s3_bucket}/{s3_key}")
+                                    
+                                    # Proceed with deletion only after successful backup and upload
+                                    if delete_role_details and backup_file and backup_content and s3_upload_success and task == 'delete':
+                                        deletion_success = delete_role_safely(
+                                            delete_role_name=delete_role_name,
+                                            delete_role_details=delete_role_details,
+                                            slave_session=slave_session,
+                                            role_deletion_threshold_days=role_deletion_threshold_days,
+                                            slave_account_id=slave_account_id
+                                        )
+                                    
+                                        if not deletion_success:
+                                            print(f"WARNING: Role deletion failed for role {delete_role_name} in account {slave_account_id} but backup exists in S3: s3://{s3_bucket}/{s3_key}")
+                                        
+                                except Exception as e:
+                                    print(f"ERROR: Failed to upload backup to S3 for role {delete_role_name} in account {slave_account_id}: {str(e)}")
+                                    continue
+                            except Exception as e:
+                                print(f"ERROR: Failed to delete role {delete_role_name} safely for account {slave_account_id}: {str(e)}")
+
                     except Exception as e:
                         print(f"ERROR: Failed to get role {delete_role_name} details for account {slave_account_id}: {str(e)}")
                         
@@ -835,6 +1005,16 @@ if __name__ == '__main__':
         except Exception as e:
             print(f"ERROR: Failed to assume slave Role {slave_role_name} in Account {slave_account_id}: {str(e)}")
             continue
+        
+        # After processing all roles for this account, create zip file
+        try:
+            zip_path = zip_account_json_files(workspace, slave_account_id)
+            if zip_path:
+                print(f"SUCCESS: Created zip archive for account {slave_account_id} at {zip_path}")
+            else:
+                print(f"WARNING: No zip archive created for account {slave_account_id}")
+        except Exception as e:
+            print(f"ERROR: Failed to create zip archive for account {slave_account_id}: {str(e)}")
  
 
 
