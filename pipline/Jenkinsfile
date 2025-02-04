@@ -1,15 +1,16 @@
 // Jenkinsfile
 def getReactiveParams() {
     return [
-        choice(
-            name: 'CONFIGURATION_METHOD',
-            choices: ['', 'Upload CSV File', 'Manual Entry'],
-            description: 'Select how you want to provide Account and Role information'
-        ),
+        
         choice(
             name: 'TASK',
             choices: ['Backup', 'Backup and Delete'],
             description: 'Select the task to perform'
+        ),
+        choice(
+            name: 'CONFIGURATION_METHOD',
+            choices: ['', 'Upload CSV File', 'Manual Entry'],
+            description: 'Select how you want to provide Account and Role information'
         ),
         [$class: 'DynamicReferenceParameter',
             choiceType: 'ET_FORMATTED_HTML',
