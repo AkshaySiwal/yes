@@ -1,0 +1,125 @@
+def check_vpc_flow_logs_in_s3(slave_session):
+    """
+    Find all S3 buckets that store VPC Flow Logs
+    Returns dictionary of buckets with their VPC Flow Log details
+    """
+    try:
+        result = {}
+
+        # Initialize EC2 client
+        ec2_client = slave_session.client('ec2')
+
+        # Get all regions
+        regions = [region['RegionName'] for region in ec2_client.describe_regions()['Regions']]
+
+        for region in regions:
+            try:
+                # Create regional EC2 client
+                regional_ec2 = slave_session.client('ec2', region_name=region)
+
+                # Get flow logs in the region
+                flow_logs = regional_ec2.describe_flow_logs()['FlowLogs']
+
+                for flow_log in flow_logs:
+                    # Check if the flow log delivers to S3
+                    if 'LogDestination' in flow_log and flow_log.get('LogDestinationType') == 's3':
+                        # Extract bucket name from the S3 ARN
+                        log_destination = flow_log['LogDestination']
+                        if log_destination.startswith('arn:aws:s3:::'):
+                            bucket_name = log_destination.split(':::')[1].split('/')[0]
+
+                            # Initialize bucket info if not exists
+                            if bucket_name not in result:
+                                result[bucket_name] = {
+                                    'bucket_name': bucket_name,
+                                    'regions': set(),
+                                    'log_destination_prefix': set()
+                                }
+
+                            # Add region and prefix information
+                            result[bucket_name]['regions'].add(region)
+                            prefix = '/'.join(log_destination.split(':::')[1].split('/')[1:]) if '/' in log_destination else ''
+                            if prefix:
+                                result[bucket_name]['log_destination_prefix'].add(prefix)
+
+            except Exception as e:
+                print(f"Error processing region {region}: {str(e)}")
+                continue
+
+        # Convert sets to lists for JSON serialization
+        for bucket in result.values():
+            bucket['regions'] = list(bucket['regions'])
+            bucket['log_destination_prefix'] = list(bucket['log_destination_prefix'])
+
+        return result
+
+    except Exception as e:
+        print(f"Error checking VPC Flow Logs in S3: {str(e)}")
+        return {}
+
+def merge_s3_and_flow_logs_data(s3_data, flow_logs_data):
+    """
+    Merge S3 bucket data with VPC Flow Logs data
+    """
+    merged_data = {}
+
+    for bucket_name, flow_log_info in flow_logs_data.items():
+        merged_data[bucket_name] = {
+            'bucket_name': bucket_name,
+            'regions_used_for_flow_logs': flow_log_info['regions'],
+            'log_destination_prefix': flow_log_info['log_destination_prefix'],
+            'bucket_tags': s3_data.get(bucket_name, {}).get('bucket_tags', {}),
+            'bucket_region': s3_data.get(bucket_name, {}).get('bucket_region', 'Unknown')
+        }
+
+    return merged_data
+
+def export_vpc_flow_logs_to_csv(merged_data, output_file='vpc_flow_logs_s3.csv'):
+    """Export VPC Flow Logs S3 information to CSV"""
+    headers = [
+        'account',
+        'bucket_name',
+        'bucket_region',
+        'regions_used_for_flow_logs',
+        'log_destination_prefix',
+        'bucket_tags'
+    ]
+
+    with open(output_file, 'w', newline='') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=headers)
+        writer.writeheader()
+
+        for account, buckets in merged_data.items():
+            for bucket_name, details in buckets.items():
+                row = {
+                    'account': account,
+                    'bucket_name': bucket_name,
+                    'bucket_region': details['bucket_region'],
+                    'regions_used_for_flow_logs': ', '.join(details['regions_used_for_flow_logs']),
+                    'log_destination_prefix': ', '.join(details['log_destination_prefix']),
+                    'bucket_tags': str(details['bucket_tags'])
+                }
+                writer.writerow(row)
+
+    print(f"CSV file '{output_file}' has been created")
+
+# Usage in main:
+if __name__ == '__main__':
+    # ... your existing code ...
+
+    # Assuming s3_data already contains your S3 bucket information
+    # s3_data[slave_account_id] = analyze_s3_buckets(slave_session)
+
+    # Check VPC Flow Logs in S3
+    vpc_flow_logs_data = {}
+    vpc_flow_logs_data[slave_account_id] = check_vpc_flow_logs_in_s3(slave_session)
+
+    # Merge S3 data with Flow Logs data
+    merged_data = {}
+    merged_data[slave_account_id] = merge_s3_and_flow_logs_data(
+        s3_data[slave_account_id],
+        vpc_flow_logs_data[slave_account_id]
+    )
+
+    # Export merged data
+    export_vpc_flow_logs_to_csv(merged_data)
