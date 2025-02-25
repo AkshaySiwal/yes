@@ -1,9 +1,23 @@
 import json
 import csv
 import os
+from collections import defaultdict
+
+def get_nested_value(data, keys, default="Not_Found"):
+    """
+    Safely get nested values from a dictionary.
+    If any key in the path is missing, return the default value.
+    """
+    current = data
+    for key in keys:
+        if isinstance(current, dict) and key in current:
+            current = current[key]
+        else:
+            return default
+    return current
 
 def json_to_csv(json_file_path, csv_file_path):
-    # Read the JSON data from file
+    # Read the JSON data
     try:
         with open(json_file_path, 'r') as json_file:
             data = json.load(json_file)
@@ -14,48 +28,161 @@ def json_to_csv(json_file_path, csv_file_path):
         print(f"Error: File '{json_file_path}' contains invalid JSON.")
         return
 
-    # Check if data exists and is in the expected format
-    if not data or not isinstance(data, dict):
-        print("Error: JSON data is empty or not in the expected format.")
-        return
-
-    # Define CSV headers
-    headers = ['index', 'oid', 'type', 'id']
+    # Define CSV headers based on the structure
+    headers = [
+        'index',
+        'api_id',
+        'method',
+        'path',
+        'provider_id',
+        'provider_name',
+        'provider_team_name',
+        'provider_team_email',
+        'provider_team_slack',
+        'consumer_count',
+        'approved_consumer_count'
+    ]
 
     # Write to CSV
+    with open(csv_file_path, 'w', newline='') as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(headers)
+
+        # Process each item in the JSON
+        for key, item in data.items():
+            # Get values with default "Not_Found" for missing keys
+            api_id = get_nested_value(item, ['_id', '$oid'])
+            method = get_nested_value(item, ['method'])
+            path = get_nested_value(item, ['path'])
+            provider_id = get_nested_value(item, ['provider', '$oid'])
+
+            # Provider info might be a list with multiple entries
+            provider_info = item.get('provider_info', [])
+            provider_name = "Not_Found"
+            provider_team_name = "Not_Found"
+            provider_team_email = "Not_Found"
+            provider_team_slack = "Not_Found"
+
+            if provider_info and len(provider_info) > 0:
+                provider_name = get_nested_value(provider_info[0], ['name'])
+                provider_team_name = get_nested_value(provider_info[0], ['team', 'name'])
+                provider_team_email = get_nested_value(provider_info[0], ['team', 'email'])
+                provider_team_slack = get_nested_value(provider_info[0], ['team', 'slack'])
+                # If slack is empty string, replace with "Not_Found"
+                if provider_team_slack == "":
+                    provider_team_slack = "Not_Found"
+
+            # Count consumers and approved consumers
+            consumers = item.get('consumers', [])
+            consumer_count = len(consumers)
+            approved_consumer_count = sum(1 for c in consumers if c.get('approved', False))
+
+            row = [
+                key,
+                api_id,
+                method,
+                path,
+                provider_id,
+                provider_name,
+                provider_team_name,
+                provider_team_email,
+                provider_team_slack,
+                consumer_count,
+                approved_consumer_count
+            ]
+            writer.writerow(row)
+
+    print(f"CSV file created successfully at: {os.path.abspath(csv_file_path)}")
+
+# Example usage
+def main():
+    # Create the JSON file with the provided content
+    json_content = '''
+{
+  "0": {
+    "_id": {
+      "$oid": "5758c67f2bb2f64b30e79355"
+    },
+    "method": "get",
+    "path": "/api/v1/marketplace/meta/categories/{categoryId}",
+    "consumers": [
+      {
+        "approved": true,
+        "consumer": {
+          "$oid": "5758c67f2bb2f64b30e79352"
+        }
+      }
+    ],
+    "provider": {
+      "$oid": "5758c54c583aa8c772521462"
+    },
+    "provider_info": [
+      {
+        "name": "seller_api",
+        "team": {
+          "name": "Titan",
+          "email": "greatwall@coupang.com",
+          "slack": ""
+        }
+      }
+    ]
+  },
+  "1": {
+    "_id": {
+      "$oid": "5758c67f2bb2f64b30e7935f"
+    },
+    "method": "get",
+    "path": "/api/v1/marketplace/meta/category-related-metas/display-category-codes/{displayCategoryCode}",
+    "consumers": [
+      {
+        "approved": true,
+        "consumer": {
+          "$oid": "5758c67f2bb2f64b30e79352"
+        }
+      },
+      {
+        "approved": false,
+        "consumer": {
+          "$oid": "5bd7750965015a003ad6374a"
+        }
+      }
+    ],
+    "provider": {
+      "$oid": "5758c54c583aa8c772521462"
+    },
+    "provider_info": [
+      {
+        "name": "seller_api",
+        "team": {
+          "name": "Titan",
+          "email": "greatwall@coupang.com",
+          "slack": ""
+        }
+      }
+    ]
+  }
+}
+'''
+
+    json_file_path = 'api_data.json'
+    csv_file_path = 'api_data.csv'
+
+    # Save the JSON content to a file
+    with open(json_file_path, 'w') as f:
+        f.write(json_content)
+
+    print(f"JSON file created at: {os.path.abspath(json_file_path)}")
+
+    # Convert JSON to CSV
+    json_to_csv(json_file_path, csv_file_path)
+
+    # Display the CSV content
     try:
-        with open(csv_file_path, 'w', newline='') as csv_file:
-            writer = csv.writer(csv_file)
-            writer.writerow(headers)
+        with open(csv_file_path, 'r') as f:
+            print("\nCSV Content:")
+            print(f.read())
+    except FileNotFoundError:
+        print(f"Note: Could not display CSV content as file '{csv_file_path}' was not created.")
 
-            # Process each item in the JSON
-            for key, item in data.items():
-                try:
-                    row = [
-                        key,
-                        item['_id']['$oid'],
-                        item['type'],
-                        item['id']
-                    ]
-                    writer.writerow(row)
-                except KeyError as e:
-                    print(f"Warning: Missing key {e} in item {key}. Skipping this entry.")
-
-        print(f"CSV file created successfully at: {os.path.abspath(csv_file_path)}")
-    except Exception as e:
-        print(f"Error writing to CSV file: {e}")
-
-# File paths
-json_file_path = 'consumer.json'  # Input JSON file
-csv_file_path = 'consumer.csv'    # Output CSV file
-
-# Convert JSON to CSV
-json_to_csv(json_file_path, csv_file_path)
-
-# Optional: Display the CSV content
-try:
-    with open(csv_file_path, 'r') as f:
-        print("\nCSV Content:")
-        print(f.read())
-except FileNotFoundError:
-    print(f"Note: Could not display CSV content as file '{csv_file_path}' was not created.")
+if __name__ == "__main__":
+    main()
