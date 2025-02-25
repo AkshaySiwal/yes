@@ -1,0 +1,36 @@
+import json
+import csv
+import os
+
+# Read the JSON file
+def json_to_csv(json_file_path, csv_file_path):
+    # Read the JSON data
+    with open(json_file_path, 'r') as json_file:
+        data = json.load(json_file)
+
+    # Define CSV headers based on the structure
+    headers = ['id', 'name', 'team_name', 'team_email', 'team_slack']
+
+    # Write to CSV
+    with open(csv_file_path, 'w', newline='') as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(headers)
+
+        # Process each item in the JSON
+        for key, item in data.items():
+            row = [
+                item['_id']['$oid'],
+                item['name'],
+                item['team']['name'],
+                item['team']['email'],
+                item['team']['slack']
+            ]
+            writer.writerow(row)
+
+    print(f"CSV file created successfully at: {os.path.abspath(csv_file_path)}")
+
+# Example usage
+json_file_path = 'data.json'  # Replace with your JSON file path
+csv_file_path = 'data.csv'    # Output CSV file path
+
+json_to_csv(json_file_path, csv_file_path)
