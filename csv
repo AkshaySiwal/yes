@@ -1,7 +1,6 @@
 import json
 import csv
 import os
-from collections import defaultdict
 
 def get_nested_value(data, keys, default="Not_Found"):
     """
@@ -12,8 +11,15 @@ def get_nested_value(data, keys, default="Not_Found"):
     for key in keys:
         if isinstance(current, dict) and key in current:
             current = current[key]
+        elif isinstance(current, list) and isinstance(key, int) and 0 <= key < len(current):
+            current = current[key]
         else:
             return default
+
+    # Handle empty strings
+    if current == "":
+        return default
+
     return current
 
 def json_to_csv(json_file_path, csv_file_path):
@@ -40,7 +46,8 @@ def json_to_csv(json_file_path, csv_file_path):
         'provider_team_email',
         'provider_team_slack',
         'consumer_count',
-        'approved_consumer_count'
+        'approved_consumer_count',
+        'consumer_ids'
     ]
 
     # Write to CSV
@@ -68,14 +75,20 @@ def json_to_csv(json_file_path, csv_file_path):
                 provider_team_name = get_nested_value(provider_info[0], ['team', 'name'])
                 provider_team_email = get_nested_value(provider_info[0], ['team', 'email'])
                 provider_team_slack = get_nested_value(provider_info[0], ['team', 'slack'])
-                # If slack is empty string, replace with "Not_Found"
-                if provider_team_slack == "":
-                    provider_team_slack = "Not_Found"
 
             # Count consumers and approved consumers
             consumers = item.get('consumers', [])
             consumer_count = len(consumers)
             approved_consumer_count = sum(1 for c in consumers if c.get('approved', False))
+
+            # Get consumer IDs as a comma-separated string
+            consumer_ids = []
+            for consumer in consumers:
+                consumer_id = get_nested_value(consumer, ['consumer', '$oid'])
+                if consumer_id != "Not_Found":
+                    consumer_ids.append(consumer_id)
+
+            consumer_ids_str = ",".join(consumer_ids) if consumer_ids else "Not_Found"
 
             row = [
                 key,
@@ -88,101 +101,24 @@ def json_to_csv(json_file_path, csv_file_path):
                 provider_team_email,
                 provider_team_slack,
                 consumer_count,
-                approved_consumer_count
+                approved_consumer_count,
+                consumer_ids_str
             ]
             writer.writerow(row)
 
     print(f"CSV file created successfully at: {os.path.abspath(csv_file_path)}")
 
-# Example usage
-def main():
-    # Create the JSON file with the provided content
-    json_content = '''
-{
-  "0": {
-    "_id": {
-      "$oid": "5758c67f2bb2f64b30e79355"
-    },
-    "method": "get",
-    "path": "/api/v1/marketplace/meta/categories/{categoryId}",
-    "consumers": [
-      {
-        "approved": true,
-        "consumer": {
-          "$oid": "5758c67f2bb2f64b30e79352"
-        }
-      }
-    ],
-    "provider": {
-      "$oid": "5758c54c583aa8c772521462"
-    },
-    "provider_info": [
-      {
-        "name": "seller_api",
-        "team": {
-          "name": "Titan",
-          "email": "greatwall@coupang.com",
-          "slack": ""
-        }
-      }
-    ]
-  },
-  "1": {
-    "_id": {
-      "$oid": "5758c67f2bb2f64b30e7935f"
-    },
-    "method": "get",
-    "path": "/api/v1/marketplace/meta/category-related-metas/display-category-codes/{displayCategoryCode}",
-    "consumers": [
-      {
-        "approved": true,
-        "consumer": {
-          "$oid": "5758c67f2bb2f64b30e79352"
-        }
-      },
-      {
-        "approved": false,
-        "consumer": {
-          "$oid": "5bd7750965015a003ad6374a"
-        }
-      }
-    ],
-    "provider": {
-      "$oid": "5758c54c583aa8c772521462"
-    },
-    "provider_info": [
-      {
-        "name": "seller_api",
-        "team": {
-          "name": "Titan",
-          "email": "greatwall@coupang.com",
-          "slack": ""
-        }
-      }
-    ]
-  }
-}
-'''
+# Main execution
+if __name__ == "__main__":
+    json_file_path = 'chintu.json'
+    csv_file_path = 'chintu.csv'
 
-    json_file_path = 'api_data.json'
-    csv_file_path = 'api_data.csv'
-
-    # Save the JSON content to a file
-    with open(json_file_path, 'w') as f:
-        f.write(json_content)
-
-    print(f"JSON file created at: {os.path.abspath(json_file_path)}")
-
-    # Convert JSON to CSV
     json_to_csv(json_file_path, csv_file_path)
 
-    # Display the CSV content
+    # Display the CSV content if successful
     try:
         with open(csv_file_path, 'r') as f:
             print("\nCSV Content:")
             print(f.read())
     except FileNotFoundError:
-        print(f"Note: Could not display CSV content as file '{csv_file_path}' was not created.")
-
-if __name__ == "__main__":
-    main()
+        pass  # CSV file wasn't created, error already reported
