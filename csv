@@ -2,35 +2,60 @@ import json
 import csv
 import os
 
-# Read the JSON file
 def json_to_csv(json_file_path, csv_file_path):
-    # Read the JSON data
-    with open(json_file_path, 'r') as json_file:
-        data = json.load(json_file)
+    # Read the JSON data from file
+    try:
+        with open(json_file_path, 'r') as json_file:
+            data = json.load(json_file)
+    except FileNotFoundError:
+        print(f"Error: File '{json_file_path}' not found.")
+        return
+    except json.JSONDecodeError:
+        print(f"Error: File '{json_file_path}' contains invalid JSON.")
+        return
 
-    # Define CSV headers based on the structure
-    headers = ['id', 'name', 'team_name', 'team_email', 'team_slack']
+    # Check if data exists and is in the expected format
+    if not data or not isinstance(data, dict):
+        print("Error: JSON data is empty or not in the expected format.")
+        return
+
+    # Define CSV headers
+    headers = ['index', 'oid', 'type', 'id']
 
     # Write to CSV
-    with open(csv_file_path, 'w', newline='') as csv_file:
-        writer = csv.writer(csv_file)
-        writer.writerow(headers)
+    try:
+        with open(csv_file_path, 'w', newline='') as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerow(headers)
 
-        # Process each item in the JSON
-        for key, item in data.items():
-            row = [
-                item['_id']['$oid'],
-                item['name'],
-                item['team']['name'],
-                item['team']['email'],
-                item['team']['slack']
-            ]
-            writer.writerow(row)
+            # Process each item in the JSON
+            for key, item in data.items():
+                try:
+                    row = [
+                        key,
+                        item['_id']['$oid'],
+                        item['type'],
+                        item['id']
+                    ]
+                    writer.writerow(row)
+                except KeyError as e:
+                    print(f"Warning: Missing key {e} in item {key}. Skipping this entry.")
 
-    print(f"CSV file created successfully at: {os.path.abspath(csv_file_path)}")
+        print(f"CSV file created successfully at: {os.path.abspath(csv_file_path)}")
+    except Exception as e:
+        print(f"Error writing to CSV file: {e}")
 
-# Example usage
-json_file_path = 'data.json'  # Replace with your JSON file path
-csv_file_path = 'data.csv'    # Output CSV file path
+# File paths
+json_file_path = 'consumer.json'  # Input JSON file
+csv_file_path = 'consumer.csv'    # Output CSV file
 
+# Convert JSON to CSV
 json_to_csv(json_file_path, csv_file_path)
+
+# Optional: Display the CSV content
+try:
+    with open(csv_file_path, 'r') as f:
+        print("\nCSV Content:")
+        print(f.read())
+except FileNotFoundError:
+    print(f"Note: Could not display CSV content as file '{csv_file_path}' was not created.")
