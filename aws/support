@@ -1,10 +1,5 @@
-We have incurred Amazon Rekognition charges of $110.40 in December 2024 and $49.51 in January 2025 under the "Usage Type" - "APN2-Group2-ImagesProcessed".
+Hello,
 
-Upon investigation, we found "DetectModerationLabels" API calls in our CloudTrail logs, but we do not see any Amazon Rekognition collections in our account.
+I have some untagged “Usage Type” entries in Cost Explorer that start with "APN2-Studio:KernelGateway-<instance type>". I believe these are part of SageMaker domain apps. My query is: Why are these not categorized under the “role” tag present on the domain these apps belong to?
 
-We need to apply appropriate cost allocation tags to these Amazon Rekognition resources that are generating the "APN2-Group2-ImagesProcessed" charges so that we can properly segregate and attribute these costs to the correct team or department.
-
-Please advise on:
-1. How to identify the specific Rekognition resources responsible for these charges
-2. The correct method to apply tags to these resources
-3. Any recommended best practices for cost allocation with Rekognition API usage
+Is it because the domain has custom tag propagation disabled? If yes, how can I set an SCP policy to check for custom tag propagation while creating and updating SageMaker domains?
