@@ -1,3 +1,4 @@
+```
 # Install pyenv via Homebrew
 brew install pyenv
 
@@ -12,12 +13,12 @@ source ~/.zshrc
 # Set Python 3.13 as your global default
 pyenv global 3.13
 
+```
 
 
 
 
-
-
+```
 # Install pyenv-virtualenv plugin
 brew install pyenv-virtualenv
 
@@ -28,3 +29,4 @@ source ~/.zshrc
 # Create and activate virtual environments
 pyenv virtualenv 3.13 my-project
 pyenv activate my-project
+```
