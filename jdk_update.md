@@ -19,3 +19,29 @@ export JAVA_TOOL_OPTIONS="--add-opens=java.base/java.lang=ALL-UNNAMED \
 # Run the specific test
 ./gradlew test --tests "com.coupang.retail.open.api.app.converter.RetailProductV2ConverterTest"
 ```
+
+
+
+```
+#!/bin/bash
+
+# Point to JAVA_HOME 
+export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 > /dev/null | grep 'java.home' | awk '{print $3}')
+echo "Using JAVA_HOME: $JAVA_HOME"
+
+# Add ALL needed Java module arguments
+export JAVA_TOOL_OPTIONS="--add-opens=java.base/java.lang=ALL-UNNAMED \
+--add-opens=java.base/java.util=ALL-UNNAMED \
+--add-opens=java.base/java.time=ALL-UNNAMED \
+--add-opens=java.base/java.time.temporal=ALL-UNNAMED \
+--add-opens=java.base/java.time.zone=ALL-UNNAMED \
+--add-opens=java.base/java.io=ALL-UNNAMED \
+--add-opens=java.base/java.util.concurrent=ALL-UNNAMED \
+--add-opens=java.base/java.util.stream=ALL-UNNAMED \
+--add-opens=java.base/java.nio=ALL-UNNAMED \
+--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED \
+--add-opens=java.sql/java.sql=ALL-UNNAMED"
+
+# Use -i flag to see more information
+./gradlew :rs-open-api-app:test --tests "com.coupang.retail.open.api.app.converter.RetailProductV2ConverterTest" -i
+```
