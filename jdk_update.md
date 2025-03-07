@@ -45,3 +45,13 @@ export JAVA_TOOL_OPTIONS="--add-opens=java.base/java.lang=ALL-UNNAMED \
 # Use -i flag to see more information
 ./gradlew :rs-open-api-app:test --tests "com.coupang.retail.open.api.app.converter.RetailProductV2ConverterTest" -i
 ```
+
+
+
+
+```
+dependencies {
+    // Update Groovy version to at least 3.0.9 for Java 17 compatibility
+    implementation 'org.codehaus.groovy:groovy-all:3.0.9'
+}
+```
