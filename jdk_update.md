@@ -27,7 +27,7 @@ export JAVA_TOOL_OPTIONS="--add-opens=java.base/java.lang=ALL-UNNAMED \
 
 # Point to JAVA_HOME 
 export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 > /dev/null | grep 'java.home' | awk '{print $3}')
-echo "Using JAVA_HOME: $JAVA_HOME"
+echo "$JAVA_HOME"
 
 # Add ALL needed Java module arguments
 export JAVA_TOOL_OPTIONS="--add-opens=java.base/java.lang=ALL-UNNAMED \
@@ -51,7 +51,30 @@ export JAVA_TOOL_OPTIONS="--add-opens=java.base/java.lang=ALL-UNNAMED \
 
 ```
 dependencies {
-    // Update Groovy version to at least 3.0.9 for Java 17 compatibility
-    implementation 'org.codehaus.groovy:groovy-all:3.0.9'
+    // Update from 1.0-groovy-2.4 to a Java 17 compatible version
+    testImplementation 'org.spockframework:spock-core:2.3-groovy-3.0'
+    
+    // You might also need to add Groovy 3.0+ explicitly
+    testImplementation 'org.codehaus.groovy:groovy-all:3.0.13'
 }
+```
+
+
+
+
+
+
+# GIT recover
+```
+# First, clean up build directories properly
+./gradlew clean
+
+# Remove any untracked files Git is showing
+git clean -fd
+
+# If you want to also remove untracked directories that are ignored by Git
+git clean -fdx
+
+# If you want to revert any modified tracked files to their original state
+git checkout -- .
 ```
