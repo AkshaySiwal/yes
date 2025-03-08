@@ -78,3 +78,10 @@ git clean -fdx
 # If you want to revert any modified tracked files to their original state
 git checkout -- .
 ```
+
+
+# TEST
+
+```
+./gradlew clean test --debug -Dorg.gradle.jvmargs="--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED"
+```
