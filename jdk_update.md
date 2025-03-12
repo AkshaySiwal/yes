@@ -95,17 +95,42 @@ testImplementation("io.mockk:mockk:1.13.5")
 testImplementation("io.mockk:mockk-agent-jvm:1.13.5")
 ```
 
-```
+package com.coupang.retail.contract_admin.app.web.contract.condition
+
+import io.mockk.MockKAnnotations
+import io.mockk.every
+import io.mockk.mockkStatic
+import io.mockk.unmockkAll
+import org.junit.runner.RunWith
+import org.spockframework.runtime.Sputnik
+import spock.lang.Specification
+
+// Import SecurityUtils class - adjust the package if needed
+import com.coupang.retail.contract_admin.app.shared.utils.SecurityUtils
+
+/**
+ * Test for ContractTemplatePageSearchCondition
+ */
 class ContractTemplatePageSearchConditionTest extends Specification {
+    
     def setupSpec() {
         // Initialize MockK for the whole test class
         MockKAnnotations.init(this)
+    }
+    
+    def cleanup() {
+        // Clear all mocks after each test
+        unmockkAll()
     }
     
     def "queryContractList with contractIds"() {
         given:
         // For static mocking with MockK
         mockkStatic(SecurityUtils)
+        
+        // If you need to mock static methods from SecurityUtils
+        // For example:
+        // every { SecurityUtils.getCurrentUser() } returns "testUser"
         
         when:
         ContractTemplatePageSearchCondition condition = ContractTemplatePageSearchCondition.builder()
@@ -118,10 +143,33 @@ class ContractTemplatePageSearchConditionTest extends Specification {
         condition.getName() == "hehe"
         condition.getPageNumber() == 111
         condition.getPageSize() == 222
-        
-        cleanup:
-        // Clear static mocks after test
-        unmockkAll()
+    }
+    
+    // Add more test methods as needed
+    
+    def "test condition builder with different values"() {
+        when:
+        ContractTemplatePageSearchCondition condition = ContractTemplatePageSearchCondition.builder()
+            .name("test")
+            .pageNumber(1)
+            .pageSize(10)
+            .build()
+            
+        then:
+        condition.getName() == "test"
+        condition.getPageNumber() == 1
+        condition.getPageSize() == 10
+    }
+    
+    def "test condition default values"() {
+        when:
+        ContractTemplatePageSearchCondition condition = ContractTemplatePageSearchCondition.builder()
+            .build()
+            
+        then:
+        condition.getName() == null
+        condition.getPageNumber() == null
+        condition.getPageSize() == null
     }
 }
 ```
