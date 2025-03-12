@@ -96,81 +96,49 @@ testImplementation("io.mockk:mockk-agent-jvm:1.13.5")
 ```
 
 ```
-package com.coupang.retail.contract_admin.app.web.contract.condition
+package com.coupang.retail.contract_admin.app.web.utils
 
-import io.mockk.MockKAnnotations
-import io.mockk.every
-import io.mockk.mockkStatic
-import io.mockk.unmockkAll
-import org.junit.runner.RunWith
-import org.spockframework.runtime.Sputnik
-import spock.lang.Specification
-
-// Import SecurityUtils class - adjust the package if needed
 import com.coupang.retail.contract_admin.app.shared.utils.SecurityUtils
+import org.apache.poi.ss.usermodel.Cell
+import org.apache.poi.ss.usermodel.CellType
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.mockito.Mock
+import org.mockito.Mockito
+import org.mockito.junit.MockitoJUnitRunner
+import static org.mockito.Mockito.when
+import static org.junit.Assert.assertEquals
 
-/**
- * Test for ContractTemplatePageSearchCondition
- */
-class ContractTemplatePageSearchConditionTest extends Specification {
+@RunWith(MockitoJUnitRunner.class)
+class CellUtilsTest {
+    @Mock
+    Cell mockCell
     
-    def setupSpec() {
-        // Initialize MockK for the whole test class
-        MockKAnnotations.init(this)
-    }
-    
-    def cleanup() {
-        // Clear all mocks after each test
-        unmockkAll()
-    }
-    
-    def "queryContractList with contractIds"() {
-        given:
-        // For static mocking with MockK
-        mockkStatic(SecurityUtils)
+    @Test
+    void buildTextFromCellWithNumericCell() {
+        // Arrange
+        when(mockCell.getCellType()).thenReturn(CellType.NUMERIC)
+        when(mockCell.getNumericCellValue()).thenReturn(111.0)
         
-        // If you need to mock static methods from SecurityUtils
-        // For example:
-        // every { SecurityUtils.getCurrentUser() } returns "testUser"
+        // Act
+        String ret = CellUtils.buildTextFromCell(mockCell)
         
-        when:
-        ContractTemplatePageSearchCondition condition = ContractTemplatePageSearchCondition.builder()
-            .name("hehe")
-            .pageNumber(111)
-            .pageSize(222)
-            .build()
-            
-        then:
-        condition.getName() == "hehe"
-        condition.getPageNumber() == 111
-        condition.getPageSize() == 222
+        // Assert
+        assertEquals("111.0", ret)
     }
     
-    // Add more test methods as needed
-    
-    def "test condition builder with different values"() {
-        when:
-        ContractTemplatePageSearchCondition condition = ContractTemplatePageSearchCondition.builder()
-            .name("test")
-            .pageNumber(1)
-            .pageSize(10)
-            .build()
-            
-        then:
-        condition.getName() == "test"
-        condition.getPageNumber() == 1
-        condition.getPageSize() == 10
-    }
-    
-    def "test condition default values"() {
-        when:
-        ContractTemplatePageSearchCondition condition = ContractTemplatePageSearchCondition.builder()
-            .build()
-            
-        then:
-        condition.getName() == null
-        condition.getPageNumber() == null
-        condition.getPageSize() == null
+    @Test
+    void buildTextFromCellWithStringCell() {
+        // Arrange
+        when(mockCell.getCellType()).thenReturn(CellType.STRING)
+        when(mockCell.getStringCellValue()).thenReturn("aaa")
+        
+        // Act
+        String ret = CellUtils.buildTextFromCell(mockCell)
+        
+        // Assert
+        assertEquals("aaa", ret)
     }
 }
 ```
