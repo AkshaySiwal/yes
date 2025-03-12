@@ -85,3 +85,43 @@ git checkout -- .
 ```
 ./gradlew clean test --debug -Dorg.gradle.jvmargs="--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED"
 ```
+
+
+
+# Extra
+
+```
+testImplementation("io.mockk:mockk:1.13.5")
+testImplementation("io.mockk:mockk-agent-jvm:1.13.5")
+```
+
+```
+class ContractTemplatePageSearchConditionTest extends Specification {
+    def setupSpec() {
+        // Initialize MockK for the whole test class
+        MockKAnnotations.init(this)
+    }
+    
+    def "queryContractList with contractIds"() {
+        given:
+        // For static mocking with MockK
+        mockkStatic(SecurityUtils)
+        
+        when:
+        ContractTemplatePageSearchCondition condition = ContractTemplatePageSearchCondition.builder()
+            .name("hehe")
+            .pageNumber(111)
+            .pageSize(222)
+            .build()
+            
+        then:
+        condition.getName() == "hehe"
+        condition.getPageNumber() == 111
+        condition.getPageSize() == 222
+        
+        cleanup:
+        // Clear static mocks after test
+        unmockkAll()
+    }
+}
+```
