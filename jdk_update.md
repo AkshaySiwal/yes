@@ -95,6 +95,7 @@ testImplementation("io.mockk:mockk:1.13.5")
 testImplementation("io.mockk:mockk-agent-jvm:1.13.5")
 ```
 
+```
 package com.coupang.retail.contract_admin.app.web.contract.condition
 
 import io.mockk.MockKAnnotations
