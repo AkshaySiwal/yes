@@ -142,3 +142,19 @@ class CellUtilsTest {
     }
 }
 ```
+
+
+```
+"sagemaker:AddTags",
+                "sagemaker:ListTags",
+                "sagemaker:DeleteTags",
+                "sagemaker:ListApps",
+                "sagemaker:DescribeApp",
+                "sagemaker:ListDomains",
+                "sagemaker:DescribeDomain",
+                "sagemaker:ListUserProfiles",
+                "sagemaker:DescribeUserProfile",
+                "sagemaker:ListSpaces",
+                "sagemaker:DescribeSpace"
+
+```
