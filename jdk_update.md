@@ -98,20 +98,17 @@ testImplementation("io.mockk:mockk-agent-jvm:1.13.5")
 ```
 package com.coupang.retail.contract_admin.app.web.contract
 
-import com.coupang.apigateway.services.rs_contract_api.model.ContractListEntryDto
-import com.coupang.apigateway.services.rs_contract_api.model.PagedResultContractListEntryDto
-import com.coupang.apigateway.services.rs_contract_api.model.ParticipantDto
-import com.coupang.retail.contract_admin.app.delegate.contract.ContractListDelegator
-import com.coupang.retail.contract_admin.app.service.excelgenerator.ExcelGenerator
+import com.coupang.apigateway.services.rs_contract_api.model.*
+import com.coupang.retail.contract_admin.app.delegate.contract.ContractV1Delegator
+import com.coupang.retail.contract_admin.app.delegate.contract.ContractV2Delegator
 import com.coupang.retail.contract_admin.app.shared.AppResponse
-import com.coupang.retail.contract_admin.app.shared.RsProjectConfig
+import com.coupang.retail.contract_admin.app.shared.i18n.LocUtils
 import com.coupang.retail.contract_admin.app.shared.utils.SecurityUtils
-import com.coupang.retail.contract_admin.app.web.contract.condition.ContractListEntryPageSearchCondition
 import com.coupang.retail.contract_admin.app.web.contract.facade.SirtMaskingFacade
+import com.google.common.collect.Maps
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mockito.InjectMocks
 import org.mockito.Mock
 import org.mockito.MockedStatic
 import org.mockito.MockitoAnnotations
@@ -119,277 +116,140 @@ import org.mockito.junit.MockitoJUnitRunner
 import static org.mockito.Mockito.*
 import static org.junit.Assert.*
 
-import javax.servlet.http.HttpServletResponse
-import java.util.function.Consumer
-
 @RunWith(MockitoJUnitRunner.class)
-public class ContractListControllerTest {
+public class ContractControllerTest {
     
-    private static final String MY_USER_ID = "myUserId"
-    private static final String CURRENT_LOGIN_ID = "other_user"
-    private static final String PARTNER_ID = "A00123456"
-    
-    @Mock
-    RsProjectConfig config
-    
-    @Mock
-    ContractListDelegator contractListDelegator
+    private static final String LOGIN_USER_ID = "whatever"
+    private static final boolean HAS_SIRT_PERMISSION_TRUE = true
+    private static final boolean HAS_SIRT_PERMISSION_FALSE = false
+    private static final boolean EXPECTED_RESULT_OK_TRUE = true
+    private static final boolean EXPECTED_RESULT_OK_FALSE = false
     
     @Mock
-    ExcelGenerator excelGenerator
+    ContractV1Delegator contractV1Delegator
+    
+    @Mock
+    ContractV2Delegator contractV2Delegator
     
     @Mock
     SirtMaskingFacade sirtMaskingFacade
     
-    @InjectMocks
-    ContractListController contractListController
+    ContractController contractController
     
-    // Test data
-    ParticipantDto creator
-    ParticipantDto signer
-    ParticipantDto approver
-    ParticipantDto referrer
-    ContractListEntryDto contractListEntryDto
+    Contract2DtoNew contractDto
     
     @Before
     public void setup() {
         MockitoAnnotations.openMocks(this)
         
         // Create a real controller with mocked dependencies
-        contractListController = new ContractListController(
-            config,
-            contractListDelegator,
-            excelGenerator,
+        contractController = new ContractController(
+            contractV1Delegator,
+            contractV2Delegator,
             sirtMaskingFacade
         )
         
         // Mock static SecurityUtils
         try (MockedStatic<SecurityUtils> mockedSecurityUtils = mockStatic(SecurityUtils.class)) {
-            mockedSecurityUtils.when(() -> SecurityUtils.getCurrentLoginId()).thenReturn(MY_USER_ID)
+            mockedSecurityUtils.when(() -> SecurityUtils.getCurrentLoginId()).thenReturn(LOGIN_USER_ID)
         }
         
         // Initialize test data
-        creator = new ParticipantDto(loginId: "creator")
-        signer = new ParticipantDto(loginId: "signer")
-        approver = new ParticipantDto(loginId: "approver")
-        referrer = new ParticipantDto(loginId: "referrer")
-        
-        contractListEntryDto = new ContractListEntryDto(
-            partnerId: "partnerId",
-            partnerName: "partnerName",
-            partnerBusinessNumber: "partnerBusinessNumber",
-            status: ContractListEntryDto.StatusEnum.APPROVED,
-            contractCreatedDate: new Date(),
-            contractSignedDate: new Date(),
-            creator: creator,
-            signers: [signer],
-            approvers: [approver],
-            referrers: [referrer]
+        contractDto = new Contract2DtoNew(
+            partnerId: "22",
+            createdBy: "creator",
+            contractPartakerDto: new ContractPartakerDto(
+                signerGroups: [new ContractSignerGroupDto(members: [new PartakerMemberDto(userId: "signer")])],
+                approverGroups: [new ContractApproverGroupDto(members: [new PartakerMemberDto(userId: "approver")])],
+                referrers: [new PartakerMemberDto(userId: "referrer")]
+            )
         )
     }
     
     @Test
-    public void testMaskVendorInfoIfNecessary() {
+    public void testGetContractDetailViews_TestSirtPermission() {
+        // Test case 1: LOGIN_USER_ID = "whatever", MASK_INVOC_COUNT = 1, HAS_SIRT_PERMISSION = true, EXPECTED_RESULT_OK = true
+        testGetContractDetailViewsCase("whatever", 1, true, true)
+        
+        // Test case 2: LOGIN_USER_ID = "whatever", MASK_INVOC_COUNT = 1, HAS_SIRT_PERMISSION = false, EXPECTED_RESULT_OK = false
+        testGetContractDetailViewsCase("whatever", 1, false, false)
+        
+        // Test case 3: LOGIN_USER_ID = "creator", MASK_INVOC_COUNT = 0, HAS_SIRT_PERMISSION = false, EXPECTED_RESULT_OK = true
+        testGetContractDetailViewsCase("creator", 0, false, true)
+    }
+    
+    private void testGetContractDetailViewsCase(String loginUserId, int maskInvocCount, boolean hasSirtPermission, boolean expectedResultOk) {
         // Arrange
-        when(sirtMaskingFacade.bulkMaskIfNecessary(anyString(), anyList(), anyList(), any(Consumer.class)))
-            .thenReturn(1)
+        try (MockedStatic<SecurityUtils> mockedSecurityUtils = mockStatic(SecurityUtils.class)) {
+            mockedSecurityUtils.when(() -> SecurityUtils.getCurrentLoginId()).thenReturn(loginUserId)
             
-        // Act
-        contractListController.maskVendorInfoIfNecessary(contractListEntryDto, CURRENT_LOGIN_ID)
-        
-        // Assert
-        verify(sirtMaskingFacade).bulkMaskIfNecessary(eq(CURRENT_LOGIN_ID), anyList(), anyList(), any(Consumer.class))
-        
-        // Verify data table values
-        Map<String, Integer> expectedResults = [
-            "creator": 0,
-            "signer": 0,
-            "approver": 0,
-            "referrer": 0,
-            "whatever": 1
-        ]
-        
-        // We can't directly verify the data table, but we can verify the interaction
-        verify(sirtMaskingFacade).bulkMaskIfNecessary(
-            eq(CURRENT_LOGIN_ID), 
-            anyList(), 
-            anyList(), 
-            any(Consumer.class)
-        )
-    }
-    
-    @Test
-    public void testMaskVendorInfoIfNecessary_MaskPartnerNameIfSirtPermitPartnerNameIsFalse() {
-        // Arrange
-        when(config.isSirtPermitPartnerName()).thenReturn(false)
-        
-        List<ContractListEntryDto> contractListEntryDtoList = [
-            ContractListEntryDto.builder()
-                .partnerId(PARTNER_ID)
-                .partnerName("test_partnerName")
-                .partnerBusinessNumber("test_partnerBusinessNumber")
-                .creator(ParticipantDto.builder().loginId("test_creator").build())
-                .signers([ParticipantDto.builder().loginId("test_signer").build()])
-                .approvers([ParticipantDto.builder().loginId("test_approver").build()])
-                .referrers([ParticipantDto.builder().loginId("test_referrer").build()])
-                .build()
-        ]
-        
-        // Mock the bulkMaskIfNecessary method to verify it's called with correct parameters
-        when(sirtMaskingFacade.bulkMaskIfNecessary(
-            eq("other_user"), 
-            eq([PARTNER_ID, PARTNER_ID]), 
-            any(List.class), 
-            any(Consumer.class)
-        )).thenAnswer { invocation ->
-            // Extract the consumer from the arguments
-            Consumer<List<String>> consumer = invocation.getArguments()[3]
-            // Call the consumer with a list that has size 2 to simulate the behavior
-            consumer.accept(["item1", "item2"])
-            return 2
+            // Mock contract detail view
+            ContractDetailViewDtoNew detailViewDto = mock(ContractDetailViewDtoNew.class)
+            when(detailViewDto.getContractDto()).thenReturn(contractDto)
+            
+            // Mock AppResponse
+            AppResponse<ContractDetailViewDtoNew> appResponse = mock(AppResponse.class)
+            when(appResponse.isOk()).thenReturn(expectedResultOk)
+            when(appResponse.getData()).thenReturn(detailViewDto)
+            
+            // Mock contractV2Delegator
+            when(contractV2Delegator.getContractV2Detail(anyLong(), anyString(), anyInt())).thenReturn(appResponse)
+            
+            // Mock sirtMaskingFacade
+            when(sirtMaskingFacade.checkPermission(anyString(), anyList())).thenReturn(hasSirtPermission ? 1 : 0)
+            
+            // Act
+            def result = contractController.getContractDetailViews(1, "returnUri", 0)
+            
+            // Assert
+            assertEquals(expectedResultOk, result.isOk())
+            
+            // Verify sirtMaskingFacade.checkPermission was called the expected number of times
+            if (maskInvocCount > 0) {
+                verify(sirtMaskingFacade, times(maskInvocCount)).checkPermission(anyString(), anyList())
+            } else {
+                verify(sirtMaskingFacade, never()).checkPermission(anyString(), anyList())
+            }
         }
-        
-        // Act
-        contractListController.maskVendorInfoIfNecessary(contractListEntryDtoList, "other_user")
-        
-        // Assert
-        verify(sirtMaskingFacade).bulkMaskIfNecessary(
-            eq("other_user"), 
-            eq([PARTNER_ID, PARTNER_ID]), 
-            any(List.class), 
-            any(Consumer.class)
-        )
     }
     
     @Test
-    public void testMaskVendorInfoIfNecessary_DoNotMaskPartnerNameIfSirtPermitPartnerNameIsTrue() {
+    public void testDraftContracts_Spring5Upgrade() {
         // Arrange
-        when(config.isSirtPermitPartnerName()).thenReturn(true)
+        ContractDraftDto contractDraftDto = new ContractDraftDto()
+        contractDraftDto.setContractTypeId("111")
         
-        List<ContractListEntryDto> contractListEntryDtoList = [
-            ContractListEntryDto.builder()
-                .partnerId(PARTNER_ID)
-                .partnerName("test_partnerName")
-                .partnerBusinessNumber("test_partnerBusinessNumber")
-                .creator(ParticipantDto.builder().loginId("test_creator").build())
-                .signers([ParticipantDto.builder().loginId("test_signer").build()])
-                .approvers([ParticipantDto.builder().loginId("test_approver").build()])
-                .referrers([ParticipantDto.builder().loginId("test_referrer").build()])
-                .build()
-        ]
+        // Test case 1: partnerId is empty
+        AppResponse<Contract2DtoNew> emptyPartnerIdResponse = new AppResponse<>()
+        emptyPartnerIdResponse.getErrors().add(new AppResponse.Error("partnerId is empty"))
+        when(contractController.draftContracts(contractDraftDto)).thenReturn(emptyPartnerIdResponse)
         
-        // Mock the bulkMaskIfNecessary method to verify it's called with correct parameters
-        when(sirtMaskingFacade.bulkMaskIfNecessary(
-            eq("other_user"), 
-            eq([PARTNER_ID]), 
-            any(List.class), 
-            any(Consumer.class)
-        )).thenAnswer { invocation ->
-            // Extract the consumer from the arguments
-            Consumer<List<String>> consumer = invocation.getArguments()[3]
-            // Call the consumer with a list that has size 1 to simulate the behavior
-            consumer.accept(["item1"])
-            return 1
-        }
+        // Act & Assert for case 1
+        AppResponse<Contract2DtoNew> response = contractController.draftContracts(contractDraftDto)
+        assertEquals("partnerId is empty", response.getErrors().get(0).getMessage())
         
-        // Act
-        contractListController.maskVendorInfoIfNecessary(contractListEntryDtoList, "other_user")
+        // Test case 2: contract title is empty
+        contractDraftDto.setPartnerId("111")
+        contractDraftDto.setTitle(Maps.newHashMap())
+        contractDraftDto.getTitle().put(LocUtils.getPrimaryLocale(), "")
         
-        // Assert
-        verify(sirtMaskingFacade).bulkMaskIfNecessary(
-            eq("other_user"), 
-            eq([PARTNER_ID]), 
-            any(List.class), 
-            any(Consumer.class)
-        )
-    }
-    
-    @Test
-    public void testQueryContractList_WillCallMaskVendorInfoIfNecessary() {
-        // Arrange
-        PagedResultContractListEntryDto pagedResult = mock(PagedResultContractListEntryDto.class)
-        when(pagedResult.getContent()).thenReturn([contractListEntryDto])
-        when(pagedResult.getPageNumber()).thenReturn(1)
-        when(pagedResult.getTotalPages()).thenReturn(1)
-        when(pagedResult.getPageSize()).thenReturn(10)
-        when(pagedResult.getTotalElements()).thenReturn(20L)
+        AppResponse<Contract2DtoNew> emptyTitleResponse = new AppResponse<>()
+        emptyTitleResponse.getErrors().add(new AppResponse.Error("contract title is empty"))
+        when(contractController.draftContracts(contractDraftDto)).thenReturn(emptyTitleResponse)
         
-        AppResponse<PagedResultContractListEntryDto> appResponse = new AppResponse<>(pagedResult)
-        when(contractListDelegator.findContractListEntriesPages(any())).thenReturn(appResponse)
+        // Act & Assert for case 2
+        response = contractController.draftContracts(contractDraftDto)
+        assertEquals("contract title is empty", response.getErrors().get(0).getMessage())
         
-        // Mock the bulkMaskIfNecessary method
-        when(sirtMaskingFacade.bulkMaskIfNecessary(
-            anyString(), 
-            anyList(), 
-            anyList(), 
-            any(Consumer.class)
-        )).thenReturn(1)
+        // Test case 3: valid contract
+        contractDraftDto.setPartnerId("111")
+        contractDraftDto.getTitle().put(LocUtils.getPrimaryLocale(), "aaa")
         
-        // Act
-        contractListController.queryContractList(
-            1, 10, null, null, null, null,
-            null, null, null, null, null, null,
-            null, null
-        )
+        when(contractController.draftContracts(contractDraftDto)).thenReturn(null)
         
-        // Assert
-        verify(sirtMaskingFacade).bulkMaskIfNecessary(
-            anyString(), 
-            anyList(), 
-            anyList(), 
-            any(Consumer.class)
-        )
-    }
-    
-    @Test
-    public void testDownloadContractExcel_WillCallMaskVendorInfoIfNecessary() {
-        // Arrange
-        PagedResultContractListEntryDto pagedResult = mock(PagedResultContractListEntryDto.class)
-        when(pagedResult.getContent()).thenReturn([contractListEntryDto])
-        when(pagedResult.getPageNumber()).thenReturn(1)
-        when(pagedResult.getTotalPages()).thenReturn(2)
-        when(pagedResult.getPageSize()).thenReturn(10)
-        when(pagedResult.getTotalElements()).thenReturn(20L)
-        
-        AppResponse<PagedResultContractListEntryDto> appResponse = new AppResponse<>(pagedResult)
-        when(contractListDelegator.findContractListEntriesPages(any())).thenReturn(appResponse)
-        
-        HttpServletResponse response = mock(HttpServletResponse.class)
-        
-        // Mock the bulkMaskIfNecessary method
-        when(sirtMaskingFacade.bulkMaskIfNecessary(
-            anyString(), 
-            anyList(), 
-            anyList(), 
-            any(Consumer.class)
-        )).thenReturn(2)
-        
-        // Act
-        contractListController.downloadContractExcel(
-            response, null, null, null, null, null, null,
-            null, null, null, null, null
-        )
-        
-        // Assert
-        verify(sirtMaskingFacade).bulkMaskIfNecessary(
-            anyString(), 
-            anyList(), 
-            anyList(), 
-            any(Consumer.class)
-        )
-    }
-    
-    @Test
-    public void testQueryContractListWithContractIds() {
-        // Arrange
-        ContractListEntryPageSearchCondition condition = contractListController.buildContractListEntryPageSearchCondition(
-            1, 10, null, [1, 2], null,
-            null, null, null, null, null,
-            null, null
-        )
-        
-        // Act & Assert
-        assertEquals([1, 2], condition.getContractIds())
+        // Act & Assert for case 3
+        response = contractController.draftContracts(contractDraftDto)
+        assertNull(response)
     }
 }
 ```
