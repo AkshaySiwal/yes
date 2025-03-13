@@ -96,44 +96,49 @@ testImplementation("io.mockk:mockk-agent-jvm:1.13.5")
 ```
 
 ```
-ContractTemplatePageSearchConditionTest.groovy
-```
-```
-package com.coupang.retail.contract_admin.app.web.contract.condition
+package com.coupang.retail.contract_admin.app.web.contract.audience
 
+import com.coupang.retail.contract_admin.app.delegate.audience.AudienceQueryDelegator
 import com.coupang.retail.contract_admin.app.shared.utils.SecurityUtils
+import com.coupang.apigateway.services.audience.query.api.model.SegmentInfoDtosV3
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mockito.InjectMocks
 import org.mockito.Mock
 import org.mockito.MockitoAnnotations
-import org.junit.Before
 import org.mockito.junit.MockitoJUnitRunner
-import static org.junit.Assert.assertEquals
+import static org.mockito.Mockito.*
+import static org.junit.Assert.*
 
 @RunWith(MockitoJUnitRunner.class)
-class ContractTemplatePageSearchConditionTest {
+public class ContractAudienceControllerTest {
     
-    // If you need to mock SecurityUtils, you would use Mockito's static mocking
-    // But this test doesn't actually use SecurityUtils
+    @Mock
+    AudienceQueryDelegator audienceQueryDelegator;
+    
+    @InjectMocks
+    ContractAudienceController sub;
     
     @Before
     public void setup() {
-        MockitoAnnotations.openMocks(this)
+        MockitoAnnotations.openMocks(this);
     }
     
     @Test
-    public void testQueryContractListWithContractIds() {
+    public void testGetSegmentInfos() {
         // Arrange
-        ContractTemplatePageSearchCondition condition = ContractTemplatePageSearchCondition.builder()
-            .name("hehe")
-            .pageNumber(111)
-            .pageSize(222)
-            .build()
-            
+        SegmentInfoDtosV3 mockResponse = SegmentInfoDtosV3.builder().build();
+        when(audienceQueryDelegator.getSegmentInfos(anyString(), anyString(), anyInt(), anyInt()))
+            .thenReturn(mockResponse);
+        
+        // Act
+        def result = sub.getSegmentInfos("1", "a", 0, 10);
+        result = sub.getSegmentInfos("", "a", 0, 10);
+        
         // Assert
-        assertEquals("hehe", condition.getName())
-        assertEquals(111, condition.getPageNumber())
-        assertEquals(222, condition.getPageSize())
+        assertNotNull(result);
+        verify(audienceQueryDelegator, times(2)).getSegmentInfos(anyString(), anyString(), anyInt(), anyInt());
     }
 }
 ```
