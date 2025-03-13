@@ -96,10 +96,16 @@ testImplementation("io.mockk:mockk-agent-jvm:1.13.5")
 ```
 
 ```
-package com.coupang.retail.contract_admin.app.web.contract.audience
+package com.coupang.retail.contract_admin.app.web.contract
 
-import com.coupang.retail.contract_admin.app.delegate.audience.AudienceQueryDelegator
+import com.coupang.apigateway.services.rs_contract_api.model.*
+import com.coupang.retail.contract_admin.app.delegate.contract.ContractV1Delegator
+import com.coupang.retail.contract_admin.app.delegate.contract.ContractV2Delegator
+import com.coupang.retail.contract_admin.app.shared.AppResponse
+import com.coupang.retail.contract_admin.app.shared.i18n.LocUtils
 import com.coupang.retail.contract_admin.app.shared.utils.SecurityUtils
+import com.coupang.retail.contract_admin.app.web.contract.facade.SirtMaskingFacade
+import com.google.common.collect.Maps
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -111,34 +117,109 @@ import static org.mockito.Mockito.*
 import static org.junit.Assert.*
 
 @RunWith(MockitoJUnitRunner.class)
-public class ContractAudienceControllerTest {
+public class ContractControllerTest {
     
     @Mock
-    AudienceQueryDelegator audienceQueryDelegator;
+    ContractV1Delegator contractV1Delegator;
+    
+    @Mock
+    ContractV2Delegator contractV2Delegator;
+    
+    @Mock
+    SirtMaskingFacade sirtMaskingFacade;
     
     @InjectMocks
-    ContractAudienceController sub;
+    ContractController contractController;
+    
+    // Test data
+    ContractDtoNew contractDto;
     
     @Before
     public void setup() {
         MockitoAnnotations.openMocks(this);
+        
+        // Initialize test data
+        contractDto = new ContractDtoNew(
+            partnerId: "22",
+            createdBy: "creator",
+            contractPartakerDto: new ContractPartakerDto(
+                signerGroups: [new ContractSignerGroupDto(members: [new PartakerMemberDto(userId: "signer")])],
+                approverGroups: [new ContractApproverGroupDto(members: [new PartakerMemberDto(userId: "approver")])],
+                referrers: [new PartakerMemberDto(userId: "referrer")]
+            )
+        );
     }
     
     @Test
-    public void testGetSegmentInfos() {
+    public void testGetContractDetailViews_SirtPermission() {
         // Arrange
-        // Use the fully qualified class name instead of importing it
-        Object mockResponse = mock(com.coupang.apigateway.services.audience.query.api.model.SegmentInfoDtosV3.class);
-        when(audienceQueryDelegator.getSegmentInfos(anyString(), anyString(), anyInt(), anyInt()))
-            .thenReturn(mockResponse);
+        // Mock SecurityUtils static method
+        try (MockedStatic<SecurityUtils> mockedSecurityUtils = mockStatic(SecurityUtils.class)) {
+            mockedSecurityUtils.when(() -> SecurityUtils.getCurrentLoginId()).thenReturn("whatever");
+            
+            // Mock contract detail view
+            ContractDetailViewDtoNew detailViewDto = mock(ContractDetailViewDtoNew.class);
+            when(detailViewDto.getContractDto()).thenReturn(contractDto);
+            
+            // Mock contract V2 delegator
+            AppResponse appResponse = mock(AppResponse.class);
+            when(appResponse.isOk()).thenReturn(true);
+            when(appResponse.getData()).thenReturn(detailViewDto);
+            when(contractV2Delegator.getContractV2Detail(anyLong(), anyLong(), anyLong())).thenReturn(appResponse);
+            
+            // Mock SIRT permission check
+            when(sirtMaskingFacade.checkPermission(anyString())).thenReturn(true);
+            
+            // Act
+            def result = contractController.getContractDetailViews(1, "returnUrl", 0);
+            
+            // Assert
+            assertTrue(result.isOk());
+            assertEquals("EXPECTED_RESULT_OK", result.isOk());
+            
+            // Verify interactions
+            verify(sirtMaskingFacade).checkPermission(anyString());
+            verify(contractV2Delegator).getContractV2Detail(anyLong(), anyLong(), anyLong());
+        }
         
-        // Act
-        def result = sub.getSegmentInfos("1", "a", 0, 10);
-        result = sub.getSegmentInfos("", "a", 0, 10);
+        // Test with different login IDs
+        try (MockedStatic<SecurityUtils> mockedSecurityUtils = mockStatic(SecurityUtils.class)) {
+            mockedSecurityUtils.when(() -> SecurityUtils.getCurrentLoginId()).thenReturn("creator");
+            
+            // Act and assert for creator
+            def result = contractController.getContractDetailViews(1, "returnUrl", 0);
+            assertTrue(result.isOk());
+        }
+    }
+    
+    @Test
+    public void testDraftContracts_SpringUpgrade() {
+        // Arrange
+        ContractDraftDto contractDraftDto = new ContractDraftDto();
+        contractDraftDto.setContractTypeId("111");
+        
+        // Act - First call without partnerId
+        AppResponse<ContractDtoNew> response = contractController.draftContracts(contractDraftDto);
         
         // Assert
-        assertNotNull(result);
-        verify(audienceQueryDelegator, times(2)).getSegmentInfos(anyString(), anyString(), anyInt(), anyInt());
+        assertEquals("partnerId is empty", response.getErrors().get(0).getMessage());
+        
+        // Act - Second call with partnerId but no title
+        contractDraftDto.setPartnerId("111");
+        contractDraftDto.setTitle(Maps.newHashMap());
+        contractDraftDto.getTitle().put(LocUtils.getPrimaryLocale(), "");
+        response = contractController.draftContracts(contractDraftDto);
+        
+        // Assert
+        assertEquals("contract title is empty", response.getErrors().get(0).getMessage());
+        
+        // Act - Third call with valid data
+        contractDraftDto.setPartnerId("111");
+        contractDraftDto.getTitle().put(LocUtils.getPrimaryLocale(), "aaa");
+        response = contractController.draftContracts(contractDraftDto);
+        
+        // Assert
+        assertNull(response);
     }
 }
 ```
