@@ -96,65 +96,30 @@ testImplementation("io.mockk:mockk-agent-jvm:1.13.5")
 ```
 
 ```
-package com.coupang.retail.contract_admin.app.web.utils
 
-import com.coupang.retail.contract_admin.app.shared.utils.SecurityUtils
-import org.apache.poi.ss.usermodel.Cell
-import org.apache.poi.ss.usermodel.CellType
-import org.junit.Before
-import org.junit.Test
-import org.junit.runner.RunWith
-import org.mockito.Mock
-import org.mockito.Mockito
-import org.mockito.junit.MockitoJUnitRunner
-import static org.mockito.Mockito.when
-import static org.junit.Assert.assertEquals
-
-@RunWith(MockitoJUnitRunner.class)
-class CellUtilsTest {
-    @Mock
-    Cell mockCell
-    
-    @Test
-    void buildTextFromCellWithNumericCell() {
-        // Arrange
-        when(mockCell.getCellType()).thenReturn(CellType.NUMERIC)
-        when(mockCell.getNumericCellValue()).thenReturn(111.0)
-        
-        // Act
-        String ret = CellUtils.buildTextFromCell(mockCell)
-        
-        // Assert
-        assertEquals("111.0", ret)
+{
+  "Version": "2012-10-17",
+  "Id": "vpceAccessControlForVendorSignupTwProd",
+  "Statement": [
+    {
+      "Sid": "DenyAccessFromOutsideSpecificVPCE",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::vendor-signup-tw-prod",
+        "arn:aws:s3:::vendor-signup-tw-prod/*"
+      ],
+      "Condition": {
+        "StringNotEquals": {
+          "aws:SourceVpce": [
+            "vpce-90ae4df9", 
+            "vpce-0a1db757cb1f9f700", 
+            "vpce-0fcaec5a6252bc6bd"
+          ]
+        }
+      }
     }
-    
-    @Test
-    void buildTextFromCellWithStringCell() {
-        // Arrange
-        when(mockCell.getCellType()).thenReturn(CellType.STRING)
-        when(mockCell.getStringCellValue()).thenReturn("aaa")
-        
-        // Act
-        String ret = CellUtils.buildTextFromCell(mockCell)
-        
-        // Assert
-        assertEquals("aaa", ret)
-    }
+  ]
 }
-```
-
-
-```
-"sagemaker:AddTags",
-                "sagemaker:ListTags",
-                "sagemaker:DeleteTags",
-                "sagemaker:ListApps",
-                "sagemaker:DescribeApp",
-                "sagemaker:ListDomains",
-                "sagemaker:DescribeDomain",
-                "sagemaker:ListUserProfiles",
-                "sagemaker:DescribeUserProfile",
-                "sagemaker:ListSpaces",
-                "sagemaker:DescribeSpace"
-
 ```
