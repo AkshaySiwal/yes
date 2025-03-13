@@ -119,6 +119,10 @@ import static org.junit.Assert.*
 @RunWith(MockitoJUnitRunner.class)
 public class ContractControllerTest {
     
+    // Constants for test cases from the data table
+    private static final String LOGIN_USER_ID_WHATEVER = "whatever"
+    private static final String LOGIN_USER_ID_CREATOR = "creator"
+    
     @Mock
     ContractV1Delegator contractV1Delegator;
     
@@ -152,10 +156,21 @@ public class ContractControllerTest {
     
     @Test
     public void testGetContractDetailViews_SirtPermission() {
+        // Test case 1: "whatever" login ID, mask invoc count 1, has SIRT permission true, expected result OK true
+        testGetContractDetailViewsWithLoginId(LOGIN_USER_ID_WHATEVER, 1, true, true);
+        
+        // Test case 2: "whatever" login ID, mask invoc count 1, has SIRT permission false, expected result OK false
+        testGetContractDetailViewsWithLoginId(LOGIN_USER_ID_WHATEVER, 1, false, false);
+        
+        // Test case 3: "creator" login ID, mask invoc count 0, has SIRT permission false, expected result OK true
+        testGetContractDetailViewsWithLoginId(LOGIN_USER_ID_CREATOR, 0, false, true);
+    }
+    
+    private void testGetContractDetailViewsWithLoginId(String loginId, int maskInvocCount, 
+                                                      boolean hasSirtPermission, boolean expectedResultOk) {
         // Arrange
-        // Mock SecurityUtils static method
         try (MockedStatic<SecurityUtils> mockedSecurityUtils = mockStatic(SecurityUtils.class)) {
-            mockedSecurityUtils.when(() -> SecurityUtils.getCurrentLoginId()).thenReturn("whatever");
+            mockedSecurityUtils.when(() -> SecurityUtils.getCurrentLoginId()).thenReturn(loginId);
             
             // Mock contract detail view
             ContractDetailViewDtoNew detailViewDto = mock(ContractDetailViewDtoNew.class);
@@ -168,27 +183,16 @@ public class ContractControllerTest {
             when(contractV2Delegator.getContractV2Detail(anyLong(), anyLong(), anyLong())).thenReturn(appResponse);
             
             // Mock SIRT permission check
-            when(sirtMaskingFacade.checkPermission(anyString())).thenReturn(true);
+            when(sirtMaskingFacade.checkPermission(anyString())).thenReturn(hasSirtPermission);
             
             // Act
             def result = contractController.getContractDetailViews(1, "returnUrl", 0);
             
             // Assert
-            assertTrue(result.isOk());
-            assertEquals("EXPECTED_RESULT_OK", result.isOk());
+            assertEquals(expectedResultOk, result.isOk());
             
             // Verify interactions
-            verify(sirtMaskingFacade).checkPermission(anyString());
-            verify(contractV2Delegator).getContractV2Detail(anyLong(), anyLong(), anyLong());
-        }
-        
-        // Test with different login IDs
-        try (MockedStatic<SecurityUtils> mockedSecurityUtils = mockStatic(SecurityUtils.class)) {
-            mockedSecurityUtils.when(() -> SecurityUtils.getCurrentLoginId()).thenReturn("creator");
-            
-            // Act and assert for creator
-            def result = contractController.getContractDetailViews(1, "returnUrl", 0);
-            assertTrue(result.isOk());
+            verify(sirtMaskingFacade, times(maskInvocCount)).checkPermission(anyString());
         }
     }
     
