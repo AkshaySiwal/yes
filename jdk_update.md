@@ -96,30 +96,44 @@ testImplementation("io.mockk:mockk-agent-jvm:1.13.5")
 ```
 
 ```
+ContractTemplatePageSearchConditionTest.groovy
+```
+```
+package com.coupang.retail.contract_admin.app.web.contract.condition
 
-{
-  "Version": "2012-10-17",
-  "Id": "vpceAccessControlForVendorSignupTwProd",
-  "Statement": [
-    {
-      "Sid": "DenyAccessFromOutsideSpecificVPCE",
-      "Effect": "Deny",
-      "Principal": "*",
-      "Action": "s3:*",
-      "Resource": [
-        "arn:aws:s3:::vendor-signup-tw-prod",
-        "arn:aws:s3:::vendor-signup-tw-prod/*"
-      ],
-      "Condition": {
-        "StringNotEquals": {
-          "aws:SourceVpce": [
-            "vpce-90ae4df9", 
-            "vpce-0a1db757cb1f9f700", 
-            "vpce-0fcaec5a6252bc6bd"
-          ]
-        }
-      }
+import com.coupang.retail.contract_admin.app.shared.utils.SecurityUtils
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.mockito.Mock
+import org.mockito.MockitoAnnotations
+import org.junit.Before
+import org.mockito.junit.MockitoJUnitRunner
+import static org.junit.Assert.assertEquals
+
+@RunWith(MockitoJUnitRunner.class)
+class ContractTemplatePageSearchConditionTest {
+    
+    // If you need to mock SecurityUtils, you would use Mockito's static mocking
+    // But this test doesn't actually use SecurityUtils
+    
+    @Before
+    public void setup() {
+        MockitoAnnotations.openMocks(this)
     }
-  ]
+    
+    @Test
+    public void testQueryContractListWithContractIds() {
+        // Arrange
+        ContractTemplatePageSearchCondition condition = ContractTemplatePageSearchCondition.builder()
+            .name("hehe")
+            .pageNumber(111)
+            .pageSize(222)
+            .build()
+            
+        // Assert
+        assertEquals("hehe", condition.getName())
+        assertEquals(111, condition.getPageNumber())
+        assertEquals(222, condition.getPageSize())
+    }
 }
 ```
