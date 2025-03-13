@@ -100,7 +100,6 @@ package com.coupang.retail.contract_admin.app.web.contract.audience
 
 import com.coupang.retail.contract_admin.app.delegate.audience.AudienceQueryDelegator
 import com.coupang.retail.contract_admin.app.shared.utils.SecurityUtils
-import com.coupang.apigateway.services.audience.query.api.model.SegmentInfoDtosV3
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -128,7 +127,8 @@ public class ContractAudienceControllerTest {
     @Test
     public void testGetSegmentInfos() {
         // Arrange
-        SegmentInfoDtosV3 mockResponse = SegmentInfoDtosV3.builder().build();
+        // Use the fully qualified class name instead of importing it
+        Object mockResponse = mock(com.coupang.apigateway.services.audience.query.api.model.SegmentInfoDtosV3.class);
         when(audienceQueryDelegator.getSegmentInfos(anyString(), anyString(), anyInt(), anyInt()))
             .thenReturn(mockResponse);
         
