@@ -96,15 +96,17 @@ testImplementation("io.mockk:mockk-agent-jvm:1.13.5")
 ```
 
 ```
-package com.coupang.retail.contract_admin.app.web.contract.coupon
+package com.coupang.retail.contract_admin.app.web.contract
 
-import com.coupang.apigateway.services.rs_contract_api.model.CouponContractDto
-import com.coupang.apigateway.services.rs_contract_api.model.CouponContractQueryDto
-import com.coupang.retail.contract_admin.app.delegate.contract.CouponContractDelegator
+import com.coupang.apigateway.services.rs_contract_api.model.ContractListEntryDto
+import com.coupang.apigateway.services.rs_contract_api.model.PagedResultContractListEntryDto
+import com.coupang.apigateway.services.rs_contract_api.model.ParticipantDto
+import com.coupang.retail.contract_admin.app.delegate.contract.ContractListDelegator
 import com.coupang.retail.contract_admin.app.service.excelgenerator.ExcelGenerator
 import com.coupang.retail.contract_admin.app.shared.AppResponse
 import com.coupang.retail.contract_admin.app.shared.RsProjectConfig
 import com.coupang.retail.contract_admin.app.shared.utils.SecurityUtils
+import com.coupang.retail.contract_admin.app.web.contract.condition.ContractListEntryPageSearchCondition
 import com.coupang.retail.contract_admin.app.web.contract.facade.SirtMaskingFacade
 import org.junit.Before
 import org.junit.Test
@@ -118,24 +120,20 @@ import static org.mockito.Mockito.*
 import static org.junit.Assert.*
 
 import javax.servlet.http.HttpServletResponse
-import java.time.LocalDate
 import java.util.function.Consumer
 
 @RunWith(MockitoJUnitRunner.class)
-public class CouponContractControllerTest {
+public class ContractListControllerTest {
     
-    private static final String LOGIN_USER_ID = "loginUserId"
+    private static final String MY_USER_ID = "myUserId"
     private static final String CURRENT_LOGIN_ID = "other_user"
     private static final String PARTNER_ID = "A00123456"
-    
-    @Mock
-    CouponContractController couponContractController
     
     @Mock
     RsProjectConfig config
     
     @Mock
-    CouponContractDelegator couponContractDelegator
+    ContractListDelegator contractListDelegator
     
     @Mock
     ExcelGenerator excelGenerator
@@ -143,43 +141,61 @@ public class CouponContractControllerTest {
     @Mock
     SirtMaskingFacade sirtMaskingFacade
     
-    CouponContractDto couponContractDto
+    @InjectMocks
+    ContractListController contractListController
+    
+    // Test data
+    ParticipantDto creator
+    ParticipantDto signer
+    ParticipantDto approver
+    ParticipantDto referrer
+    ContractListEntryDto contractListEntryDto
     
     @Before
     public void setup() {
         MockitoAnnotations.openMocks(this)
         
         // Create a real controller with mocked dependencies
-        couponContractController = new CouponContractController(
+        contractListController = new ContractListController(
             config,
-            couponContractDelegator,
+            contractListDelegator,
             excelGenerator,
             sirtMaskingFacade
         )
         
         // Mock static SecurityUtils
         try (MockedStatic<SecurityUtils> mockedSecurityUtils = mockStatic(SecurityUtils.class)) {
-            mockedSecurityUtils.when(() -> SecurityUtils.getCurrentLoginId()).thenReturn(LOGIN_USER_ID)
+            mockedSecurityUtils.when(() -> SecurityUtils.getCurrentLoginId()).thenReturn(MY_USER_ID)
         }
         
         // Initialize test data
-        couponContractDto = new CouponContractDto(
-            createdBy: "creator",
-            signerIds: ["signer"],
-            approverIds: ["approver"],
-            referrerIds: ["referrer"]
+        creator = new ParticipantDto(loginId: "creator")
+        signer = new ParticipantDto(loginId: "signer")
+        approver = new ParticipantDto(loginId: "approver")
+        referrer = new ParticipantDto(loginId: "referrer")
+        
+        contractListEntryDto = new ContractListEntryDto(
+            partnerId: "partnerId",
+            partnerName: "partnerName",
+            partnerBusinessNumber: "partnerBusinessNumber",
+            status: ContractListEntryDto.StatusEnum.APPROVED,
+            contractCreatedDate: new Date(),
+            contractSignedDate: new Date(),
+            creator: creator,
+            signers: [signer],
+            approvers: [approver],
+            referrers: [referrer]
         )
     }
     
     @Test
     public void testMaskVendorInfoIfNecessary() {
         // Arrange
-        int expectedInvocationCount = 1
         when(sirtMaskingFacade.bulkMaskIfNecessary(anyString(), anyList(), anyList(), any(Consumer.class)))
-            .thenReturn(expectedInvocationCount)
+            .thenReturn(1)
             
         // Act
-        couponContractController.maskVendorInfoIfNecessary(couponContractDto, CURRENT_LOGIN_ID)
+        contractListController.maskVendorInfoIfNecessary(contractListEntryDto, CURRENT_LOGIN_ID)
         
         // Assert
         verify(sirtMaskingFacade).bulkMaskIfNecessary(eq(CURRENT_LOGIN_ID), anyList(), anyList(), any(Consumer.class))
@@ -207,15 +223,15 @@ public class CouponContractControllerTest {
         // Arrange
         when(config.isSirtPermitPartnerName()).thenReturn(false)
         
-        List<CouponContractDto> couponContractDtos = [
-            CouponContractDto.builder()
+        List<ContractListEntryDto> contractListEntryDtoList = [
+            ContractListEntryDto.builder()
                 .partnerId(PARTNER_ID)
                 .partnerName("test_partnerName")
-                .businessNumber("test_businessNumber")
-                .createdBy("test_creator")
-                .signerIds(["test_signer"])
-                .approverIds(["test_approver"])
-                .referrerIds(["test_referrer"])
+                .partnerBusinessNumber("test_partnerBusinessNumber")
+                .creator(ParticipantDto.builder().loginId("test_creator").build())
+                .signers([ParticipantDto.builder().loginId("test_signer").build()])
+                .approvers([ParticipantDto.builder().loginId("test_approver").build()])
+                .referrers([ParticipantDto.builder().loginId("test_referrer").build()])
                 .build()
         ]
         
@@ -234,7 +250,7 @@ public class CouponContractControllerTest {
         }
         
         // Act
-        couponContractController.maskVendorInfoIfNecessary(couponContractDtos, "other_user")
+        contractListController.maskVendorInfoIfNecessary(contractListEntryDtoList, "other_user")
         
         // Assert
         verify(sirtMaskingFacade).bulkMaskIfNecessary(
@@ -250,15 +266,15 @@ public class CouponContractControllerTest {
         // Arrange
         when(config.isSirtPermitPartnerName()).thenReturn(true)
         
-        List<CouponContractDto> couponContractDtos = [
-            CouponContractDto.builder()
+        List<ContractListEntryDto> contractListEntryDtoList = [
+            ContractListEntryDto.builder()
                 .partnerId(PARTNER_ID)
                 .partnerName("test_partnerName")
-                .businessNumber("test_businessNumber")
-                .createdBy("test_creator")
-                .signerIds(["test_signer"])
-                .approverIds(["test_approver"])
-                .referrerIds(["test_referrer"])
+                .partnerBusinessNumber("test_partnerBusinessNumber")
+                .creator(ParticipantDto.builder().loginId("test_creator").build())
+                .signers([ParticipantDto.builder().loginId("test_signer").build()])
+                .approvers([ParticipantDto.builder().loginId("test_approver").build()])
+                .referrers([ParticipantDto.builder().loginId("test_referrer").build()])
                 .build()
         ]
         
@@ -277,7 +293,7 @@ public class CouponContractControllerTest {
         }
         
         // Act
-        couponContractController.maskVendorInfoIfNecessary(couponContractDtos, "other_user")
+        contractListController.maskVendorInfoIfNecessary(contractListEntryDtoList, "other_user")
         
         // Assert
         verify(sirtMaskingFacade).bulkMaskIfNecessary(
@@ -289,11 +305,17 @@ public class CouponContractControllerTest {
     }
     
     @Test
-    public void testDownloadContractExcel_WillCallMaskVendorInfoIfNecessary() {
+    public void testQueryContractList_WillCallMaskVendorInfoIfNecessary() {
         // Arrange
-        AppResponse<List<CouponContractDto>> appResponse = new AppResponse<>([couponContractDto])
-        when(couponContractDelegator.queryCouponContract(any())).thenReturn(appResponse)
-        HttpServletResponse response = mock(HttpServletResponse.class)
+        PagedResultContractListEntryDto pagedResult = mock(PagedResultContractListEntryDto.class)
+        when(pagedResult.getContent()).thenReturn([contractListEntryDto])
+        when(pagedResult.getPageNumber()).thenReturn(1)
+        when(pagedResult.getTotalPages()).thenReturn(1)
+        when(pagedResult.getPageSize()).thenReturn(10)
+        when(pagedResult.getTotalElements()).thenReturn(20L)
+        
+        AppResponse<PagedResultContractListEntryDto> appResponse = new AppResponse<>(pagedResult)
+        when(contractListDelegator.findContractListEntriesPages(any())).thenReturn(appResponse)
         
         // Mock the bulkMaskIfNecessary method
         when(sirtMaskingFacade.bulkMaskIfNecessary(
@@ -304,13 +326,10 @@ public class CouponContractControllerTest {
         )).thenReturn(1)
         
         // Act
-        couponContractController.downloadContractExcel(
-            response, 
-            "", 
-            "", 
-            CouponContractQueryDto.ContractTypeEnum.REGULAR.toString(), 
-            LocalDate.now(), 
-            LocalDate.now()
+        contractListController.queryContractList(
+            1, 10, null, null, null, null,
+            null, null, null, null, null, null,
+            null, null
         )
         
         // Assert
@@ -320,6 +339,57 @@ public class CouponContractControllerTest {
             anyList(), 
             any(Consumer.class)
         )
+    }
+    
+    @Test
+    public void testDownloadContractExcel_WillCallMaskVendorInfoIfNecessary() {
+        // Arrange
+        PagedResultContractListEntryDto pagedResult = mock(PagedResultContractListEntryDto.class)
+        when(pagedResult.getContent()).thenReturn([contractListEntryDto])
+        when(pagedResult.getPageNumber()).thenReturn(1)
+        when(pagedResult.getTotalPages()).thenReturn(2)
+        when(pagedResult.getPageSize()).thenReturn(10)
+        when(pagedResult.getTotalElements()).thenReturn(20L)
+        
+        AppResponse<PagedResultContractListEntryDto> appResponse = new AppResponse<>(pagedResult)
+        when(contractListDelegator.findContractListEntriesPages(any())).thenReturn(appResponse)
+        
+        HttpServletResponse response = mock(HttpServletResponse.class)
+        
+        // Mock the bulkMaskIfNecessary method
+        when(sirtMaskingFacade.bulkMaskIfNecessary(
+            anyString(), 
+            anyList(), 
+            anyList(), 
+            any(Consumer.class)
+        )).thenReturn(2)
+        
+        // Act
+        contractListController.downloadContractExcel(
+            response, null, null, null, null, null, null,
+            null, null, null, null, null
+        )
+        
+        // Assert
+        verify(sirtMaskingFacade).bulkMaskIfNecessary(
+            anyString(), 
+            anyList(), 
+            anyList(), 
+            any(Consumer.class)
+        )
+    }
+    
+    @Test
+    public void testQueryContractListWithContractIds() {
+        // Arrange
+        ContractListEntryPageSearchCondition condition = contractListController.buildContractListEntryPageSearchCondition(
+            1, 10, null, [1, 2], null,
+            null, null, null, null, null,
+            null, null
+        )
+        
+        // Act & Assert
+        assertEquals([1, 2], condition.getContractIds())
     }
 }
 ```
