@@ -214,42 +214,65 @@ public class ContractControllerTest {
     }
     
     @Test
-    public void testDraftContracts_Spring5Upgrade() {
-        // Arrange
-        ContractDraftDto contractDraftDto = new ContractDraftDto()
-        contractDraftDto.setContractTypeId("111")
-        
-        // Test case 1: partnerId is empty
-        AppResponse<Contract2DtoNew> emptyPartnerIdResponse = new AppResponse<>()
-        emptyPartnerIdResponse.getErrors().add(new AppResponse.Error("partnerId is empty"))
-        when(contractController.draftContracts(contractDraftDto)).thenReturn(emptyPartnerIdResponse)
-        
-        // Act & Assert for case 1
-        AppResponse<Contract2DtoNew> response = contractController.draftContracts(contractDraftDto)
-        assertEquals("partnerId is empty", response.getErrors().get(0).getMessage())
-        
-        // Test case 2: contract title is empty
-        contractDraftDto.setPartnerId("111")
-        contractDraftDto.setTitle(Maps.newHashMap())
-        contractDraftDto.getTitle().put(LocUtils.getPrimaryLocale(), "")
-        
-        AppResponse<Contract2DtoNew> emptyTitleResponse = new AppResponse<>()
-        emptyTitleResponse.getErrors().add(new AppResponse.Error("contract title is empty"))
-        when(contractController.draftContracts(contractDraftDto)).thenReturn(emptyTitleResponse)
-        
-        // Act & Assert for case 2
-        response = contractController.draftContracts(contractDraftDto)
-        assertEquals("contract title is empty", response.getErrors().get(0).getMessage())
-        
-        // Test case 3: valid contract
-        contractDraftDto.setPartnerId("111")
-        contractDraftDto.getTitle().put(LocUtils.getPrimaryLocale(), "aaa")
-        
-        when(contractController.draftContracts(contractDraftDto)).thenReturn(null)
-        
-        // Act & Assert for case 3
-        response = contractController.draftContracts(contractDraftDto)
-        assertNull(response)
+public void testDraftContracts_Spring5Upgrade() {
+    // Arrange
+    ContractDraftDto contractDraftDto = new ContractDraftDto()
+    contractDraftDto.setContractTypeId("111")
+    
+    // Test case 1: partnerId is empty
+    AppResponse<Contract2DtoNew> emptyPartnerIdResponse = mock(AppResponse.class)
+    List<Object> errors1 = new ArrayList<>()
+    errors1.add(createErrorObject("partnerId is empty"))
+    when(emptyPartnerIdResponse.getErrors()).thenReturn(errors1)
+    when(contractController.draftContracts(contractDraftDto)).thenReturn(emptyPartnerIdResponse)
+    
+    // Act & Assert for case 1
+    AppResponse<Contract2DtoNew> response = contractController.draftContracts(contractDraftDto)
+    assertEquals("partnerId is empty", getErrorMessage(response.getErrors().get(0)))
+    
+    // Test case 2: contract title is empty
+    contractDraftDto.setPartnerId("111")
+    contractDraftDto.setTitle(Maps.newHashMap())
+    contractDraftDto.getTitle().put(LocUtils.getPrimaryLocale(), "")
+    
+    AppResponse<Contract2DtoNew> emptyTitleResponse = mock(AppResponse.class)
+    List<Object> errors2 = new ArrayList<>()
+    errors2.add(createErrorObject("contract title is empty"))
+    when(emptyTitleResponse.getErrors()).thenReturn(errors2)
+    when(contractController.draftContracts(contractDraftDto)).thenReturn(emptyTitleResponse)
+    
+    // Act & Assert for case 2
+    response = contractController.draftContracts(contractDraftDto)
+    assertEquals("contract title is empty", getErrorMessage(response.getErrors().get(0)))
+    
+    // Test case 3: valid contract
+    contractDraftDto.setPartnerId("111")
+    contractDraftDto.getTitle().put(LocUtils.getPrimaryLocale(), "aaa")
+    
+    when(contractController.draftContracts(contractDraftDto)).thenReturn(null)
+    
+    // Act & Assert for case 3
+    response = contractController.draftContracts(contractDraftDto)
+    assertNull(response)
+}
+
+// Helper method to create an error object based on your AppResponse implementation
+private Object createErrorObject(String message) {
+    // This is a generic approach - you'll need to adjust based on your actual AppResponse implementation
+    Object errorObj = mock(Object.class)
+    when(errorObj.toString()).thenReturn(message)
+    when(errorObj.getMessage()).thenReturn(message)
+    return errorObj;
+}
+
+// Helper method to get error message from error object
+private String getErrorMessage(Object error) {
+    // Try different ways to get the message based on your implementation
+    try {
+        return error.getMessage();
+    } catch (Exception e) {
+        return error.toString();
     }
+  }
 }
 ```
