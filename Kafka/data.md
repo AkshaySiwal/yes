@@ -159,3 +159,25 @@ def get_workspace_project(tfe_hostname, tfe_token, workspace_id):
 
     return project_name
 ```
+
+
+```
+def extract_aws_account_from_project(project_name):
+    if project_name is None:
+        logger.warning("Project name is None, cannot extract AWS account number")
+        return None
+
+    logger.info(f"Checking if project name '{project_name}' contains AWS account number")
+
+    # AWS account numbers are 12 digits
+    aws_account_pattern = re.compile(r'\b\d{12}\b')
+    match = aws_account_pattern.search(project_name)
+
+    if match:
+        aws_account = match.group(0)
+        logger.info(f"Found AWS account number: {aws_account}")
+        return aws_account
+    else:
+        logger.info(f"No AWS account number found in project name")
+        return project_name
+```
