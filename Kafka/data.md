@@ -181,3 +181,27 @@ def extract_aws_account_from_project(project_name):
         logger.info(f"No AWS account number found in project name")
         return project_name
 ```
+
+
+```
+def send_event_to_viewer(event_viewer_hostname, event_viewer_token, event_viewer_source, payload):
+    headers = {
+        'Content-Type': 'application/json',
+        'x-api-token': event_viewer_token
+    }
+
+    url = f"https://{event_viewer_hostname}/add_event?source={event_viewer_source}"
+    logger.info(f"Sending event to event viewer: {url}")
+
+    response = requests.post(url, headers=headers, json=payload, verify=False)
+    event_sent = False
+
+    if response.status_code == 200:
+        resp_json = response.json()
+        logger.info(f"Event created successfully: {resp_json}")
+        event_sent = True
+    else:
+        logger.error(f"Failed to create event. Status code: {response.status_code}, Response: {response.text}")
+
+    return event_sent
+```
