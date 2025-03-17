@@ -122,3 +122,40 @@ def add_event():
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
 ```
+
+
+
+
+```
+def get_workspace_project(tfe_hostname, tfe_token, workspace_id):
+    headers = {
+        'Authorization': f'Bearer {tfe_token}',
+        'Content-Type': 'application/vnd.api+json'
+    }
+    url = f"https://{tfe_hostname}/api/v2/workspaces/{workspace_id}"
+    logger.info(f"Getting workspace details for workspace id: {workspace_id}")
+
+    response = requests.get(url, headers=headers, allow_redirects=True)
+    project_name = None
+
+    if response.status_code == 200:
+        resp_json = response.json()
+        try:
+            # Extract project ID first
+            project_id = resp_json['data']['relationships']['project']['data']['id']
+            logger.info(f"Found project ID: {project_id}")
+
+            # Make another API call to get project details
+            project_url = f"https://{tfe_hostname}/api/v2/projects/{project_id}"
+            project_response = requests.get(project_url, headers=headers)
+
+            if project_response.status_code == 200:
+                project_json = project_response.json()
+                project_name = project_json['data']['attributes']['name']
+                logger.info(f"Workspace belongs to project: {project_name}")
+        except KeyError:
+            logger.error("Failed to extract project information from workspace data")
+            pass
+
+    return project_name
+```
