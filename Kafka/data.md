@@ -205,3 +205,13 @@ def send_event_to_viewer(event_viewer_hostname, event_viewer_token, event_viewer
 
     return event_sent
 ```
+
+
+
+```
+Hi Ram,
+
+I think the JIRA ticket reassignment automation is not working for my username. I currently see a total of 27 tickets assigned to me.
+
+Also, how much time am I supposed to invest in the JDK17 upgrade? It's taking a large amount of time, and sometimes we are required to update Java code for tests to function well with the new JDK17 so that builds pass. Dinesh is expecting me to give 100% of my time to the JDK upgrade.
+```
